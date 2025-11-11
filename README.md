@@ -1,4 +1,19 @@
-# Decky Loader github page: https://github.com/SteamDeckHomebrew/decky-loader 
 # Plugin Template: https://github.com/SteamDeckHomebrew/decky-loader 
 # Deck wiki: https://wiki.deckbrew.xyz/en/plugin-dev/getting-started 
-# Development Env: https://wiki.deckbrew.xyz/en/loader-dev/development
+
+# Install dep
+``bash
+npm i pnpm@9 #deprecated?
+pnpm i
+pnpm run build
+``
+
+# Frontend debugging:
+    https://wiki.deckbrew.xyz/en/plugin-dev/cef-debugging    
+    !!note 
+        on bazzite CEF port forward needs to be manually enable 
+        sh ~/CEF_forward.sh
+
+
+
+
