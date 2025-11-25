@@ -16,4 +16,10 @@ pnpm run build
 
 
 
-
+# In case Junk store dep doesn't install
+export DECKY_PLUGIN_RUNTIME_DIR=~/homebrew/data/Junk Store
+export PYTHONPATH=~/homebrew/plugins/Junk Store/scripts:$PYTHONPATH:~/homebrew/plugins/Junk Store/scripts/shared
+export DECKY_PLUGIN_DIR=~/homebrew/plugins/Junk Store
+export DECKY_PLUGIN_LOG_DIR=~/homebrew/logs/Junk Store
+cd ~/homebrew/plugins/Junk Store
+./scripts/install_deps.sh
