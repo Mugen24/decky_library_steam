@@ -27,7 +27,7 @@ function GameStore() {
           <ButtonItem
             layout="below"
           >
-            store2
+            store4
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>

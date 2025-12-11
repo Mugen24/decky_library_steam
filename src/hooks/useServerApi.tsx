@@ -1,16 +1,26 @@
 import { createContext, useContext, ReactElement, FC, ReactNode, useCallback, useState, Dispatch} from "react"
 import type { GameItemProperties } from "../Components/GameGrid"
+import { call, callable } from "@decky/api"
 
 export type ServerApiProperties = {
   isAuthenticated: boolean
   getGames: () => GameItemProperties[]
-  install: (game: GameItemProperties) => void
+  install: (id: number) => void
   uninstall: (appId: number) => void
 } 
 
 export type ServerConfig = {
   ipAddr: string,
   port: number
+}
+
+export enum ELibraryAssetType {
+    Capsule,
+    Hero,
+    Logo,
+    Header,
+    Icon,
+    HeroBlur,
 }
 
 //@ts-ignore
@@ -26,54 +36,67 @@ export function ServerApiProvider({children}: {children?: ReactElement}) {
   }, [])
 
 
-  const getGames = useCallback(() => {
-    const fakeGame: GameItemProperties = {
-      "media": {
-        "capsule": "https://cdn2.steamgriddb.com/thumb/27565002c4e5a784a1c9599648328e93.jpg"
-      },
-      "appName": "Fake Game"
-    }
-
-    const fakeGame2: GameItemProperties = {
-      "media": {
-        "capsule": "https://cdn2.steamgriddb.com/thumb/27565002c4e5a784a1c9599648328e93.jpg"
-      },
-      "appName": "Fake Game2"
-    }
-
-    const fakeGame3: GameItemProperties = {
-      "media": {
-        "capsule": "https://cdn2.steamgriddb.com/thumb/27565002c4e5a784a1c9599648328e93.jpg"
-      },
-      "appName": "Fake Game3"
-    }
-
-    const fakeGame4: GameItemProperties = {
-      "media": {
-        "capsule": "https://cdn2.steamgriddb.com/thumb/27565002c4e5a784a1c9599648328e93.jpg"
-      },
-      "appName": "Fake Game4"
-    }
-
-    const fakeGame5: GameItemProperties = {
-      "media": {
-        "capsule": "https://cdn2.steamgriddb.com/thumb/27565002c4e5a784a1c9599648328e93.jpg"
-      },
-      "appName": "Fake Game5"
-    }
-
-    return [
-      fakeGame,
-      fakeGame2,
-      fakeGame3,
-      fakeGame4,
-      fakeGame5,
-    ] 
+  const getGames = useCallback(async () => {
+    const games = await call("list_games")
+    return games
   }, [])
+
+  const getBase64Image = useCallback(async(imageURL: string, callback: (base64Img: any) => void) => {
+    const resp = await fetch(imageURL, {
+    })
+
+    console.log("imageurl", imageURL)
+    console.log("Image_fetch", resp)
+    if (resp.status !== 200) return undefined
+    
+    const blob = await resp.blob()
+    const reader = new FileReader()
+    reader.readAsDataURL(blob)
+    reader.onloadend = () => {
+        const re = new RegExp("data:.+\/.+;base64,")
+        let base64 = reader.result!
+        base64 = base64.replace(re, "")
+        // console.log(base64)
+        callback(base64)
+    }
+  }, [])
+
 
   const install = async (game: GameItemProperties) => {
       console.debug(`Install: ${game}`)
-      // await ISteamClient.Apps.AddShortcut(game.appName, game.executablePath, game.directory, game.launchOptions)
+      const appId = await SteamClient.Apps.AddShortcut(game.appName, game.executablePath, game.directory, game.launchOptions)
+
+      console.debug(`game_info: ${game.id}, appId: ${appId}`)
+
+      //TODO: remove later
+      //Need testing: Apps.SetXXX needs to be run at least once to show shortcut
+      //in UI
+      // SteamClient.Apps.SetAppLaunchOptions(appId, `appId=${appId}`)
+      
+      // SteamClient.Apps.SpecifyCompatTool
+      // const data = await SteamClient.Apps.GetAvailableCompatTools(appId)
+      // console.debug(`available_compatools: appId: ${game.appName}  ${JSON.stringify(data)}`)
+
+      //TODO: Make this more robust
+      // SteamClient.Apps.SpecifyCompatTool(appId, "proton_10")
+
+
+      getBase64Image(game.media.hero!, async (base64: string) => {
+        SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", ELibraryAssetType.Hero)
+      })
+      getBase64Image(game.media.capsule!, async (base64: string) => {
+        SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", ELibraryAssetType.Capsule)
+      })
+      //TODO: setting icon does not work
+      getBase64Image(game.media.icon!, async (base64: string) => {
+        SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", ELibraryAssetType.Icon)
+      })
+      getBase64Image(game.media.logo!, async (base64: string) => {
+        SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", ELibraryAssetType.Logo)
+      })
+
+      // const outcome = await call("install_game", game, appId)
+      // return outcome
   }
 
   const uninstall = async (appId: number) => {

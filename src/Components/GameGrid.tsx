@@ -1,19 +1,20 @@
-import { ButtonItem, ConfirmModal, DialogButton, Focusable, focusRingClasses, libraryAssetImageClasses, Menu, MenuGroup, MenuItem, ModalRoot, ModalRootProps, ScrollPanelGroup, showContextMenu, showModal } from "@decky/ui";
+import { ButtonItem, ConfirmModal, DialogButton, Focusable, FocusRing, focusRingClasses, libraryAssetImageClasses, Menu, MenuGroup, MenuItem, ModalRoot, ModalRootProps, ScrollPanelGroup, showContextMenu, showModal } from "@decky/ui";
 import { VFC, FC, ReactElement, FunctionComponent, CSSProperties, useState, useEffect, useCallback } from "react";
 import { ServerApiProperties, useServerApi } from "../hooks/useServerApi";
 
 
 
-interface GameContextProperties extends GameItemProperties {
+interface GameContextProperties {
+  game: GameItemProperties
   serverActions: ServerApiProperties
 }
 
 
-export const GameContext: FunctionComponent<GameContextProperties> = ({appName, steamAppId, serverActions}) => {
+export const GameContext: FunctionComponent<GameContextProperties> = ({game, serverActions}) => {
   return (
-    <Menu label={appName}>
-        <MenuItem onClick={!steamAppId ? () => serverActions.install({appName, steamAppId}) : () => serverActions.uninstall(steamAppId)}>
-          {!steamAppId ? "Install" : "Uninstall"}
+    <Menu label={game.appName}>
+        <MenuItem onClick={!game.appId? () => serverActions.install(game) : () => serverActions.uninstall(game.appId)}>
+          {!game.appId? "Install" : "Uninstall"}
         </MenuItem>
     </Menu>
   )
@@ -25,47 +26,49 @@ type GameMedia = {
     capsule?: URLString // 170x255
     hero?: URLString
     logo?: URLString
-    header?: URLString
     icon?: URLString
-    heroblur?: URLString
 }
 
 export type GameItemProperties = {
     appName: string
     media: GameMedia
+    size: number
     executablePath: string,
     directory: string,
-    launchOptions: string
-    steamAppId?: number
+    launchOptions: string,
+    id: number,
+    // appId: number
 } 
 
-export const GameItem: VFC<GameItemProperties> = ({
-  appName,
-  media,
-  executablePath,
-  directory,
-  launchOptions,
-  steamAppId,
-}: GameItemProperties
+
+export const GameItem: VFC<GameItemProperties> = (game: GameItemProperties
 ) => { 
 
   const [isFocus, setIsFocus] = useState(false)
   const serverActions = useServerApi()
+  console.log(isFocus)
+
+  const style: CSSProperties = {
+    padding: 2,
+    // filter: isFocus ? 'saturate(3) brightness(200%) blur(50px)' : ''
+  }
 
   return (
     <Focusable 
       onGamepadFocus={() => setIsFocus(true)}
       onGamepadBlur={() => setIsFocus(false)}
-      key={`item-root-${appName}`}
-      onClick={() => showContextMenu(<GameContext appName={appName} serverActions={serverActions}/>)}
+      key={`item-root-${game.appName}`}
+      onClick={() => showContextMenu(<GameContext game={game} serverActions={serverActions}/>)}
     > 
+
       <ButtonItem 
         bottomSeparator="none"
+        style={style}
       >
         <img 
-          src={media.capsule}
-          width={"170px"}
-          // height={"200"}
+          src={game.media.capsule}
+          // width={"600"}
+          // height={"900"}
           className={libraryAssetImageClasses.Image}
         />
       </ButtonItem>
