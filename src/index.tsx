@@ -20,19 +20,7 @@ import { StorePage } from "./StorePage";
 import { ServerApiProvider } from "./hooks/useServerApi";
 
 
-function GameStore() {
-  return (
-      <PanelSection title="store">
-        <PanelSectionRow>
-          <ButtonItem
-            layout="below"
-          >
-            store4
-          </ButtonItem>
-        </PanelSectionRow>
-      </PanelSection>
-  )
-}
+
 
 // Plugin main page (sidebar)
 function Content() {
@@ -56,18 +44,6 @@ function Content() {
 export default definePlugin(() => {
   console.log("Template plugin initializing, this is called once on frontend startup")
 
-  // const routes = {
-  //   "storePage": (
-  //     <ServerApiProvider>
-  //       <StorePage/>
-  //     </ServerApiProvider>
-  //   )
-  // }
-
-  // serverApi.routerHook.addRoute("/decky-plugin-test", DeckyPluginRouterTest, {
-  //   exact: true,
-  // });
-
   // Add an event listener to the "timer_event" event from the backend
   /*
   const listener = addEventListener<[
@@ -83,23 +59,11 @@ export default definePlugin(() => {
   });
   */
 
-  // for (const [routeName, routeJSX] of Object.entries(routes)) {
-  //   routerHook.addRoute(
-  //     `/${routeName}`,
-  //     () => {
-  //       return (
-  //         routeJSX
-  //       )
-  //     },
-  //     {exact: true} //what does this do???
-  //   )
-  // }
-  //
 
   routerHook.addRoute(`/storePage`, () => (
-       <ServerApiProvider>
          <StorePage/>
-       </ServerApiProvider>
+        //<ServerApiProvider>
+        //</ServerApiProvider>
   ), {
     exact: true //only change when layout changes
   })

@@ -46,7 +46,6 @@ export const GameItem: VFC<GameItemProperties> = (game: GameItemProperties
 
   const [isFocus, setIsFocus] = useState(false)
   const serverActions = useServerApi()
-  console.log(isFocus)
 
   const style: CSSProperties = {
     padding: 2,

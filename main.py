@@ -1,7 +1,9 @@
 from logging import exception
 import os
-from typing import Any, Literal, NewType
+from typing import Any, Literal, NewType, NotRequired, Tuple
 import json
+from textwrap import dedent
+from urllib import response
 
 # The decky plugin module is located at decky-loader/plugin
 # For easy intellisense checkout the decky-loader code repo
@@ -11,6 +13,7 @@ import os
 import subprocess
 import asyncio
 from dataclasses import asdict, dataclass
+from base64 import b64encode
 
 from pathlib import Path
 from urllib import request
@@ -18,6 +21,7 @@ from zipfile import ZipFile
 
 from typing import TypedDict
 import traceback
+from http import HTTPStatus
 
 logger = decky.logger
 
@@ -59,12 +63,13 @@ def download(url, download_path: Path):
 
     return download_path
 
+def _download_asset_base64(asset_url: str):
+    runtime_dir = Path(decky.DECKY_PLUGIN_RUNTIME_DIR) 
+    resp = request.urlopen(asset_url)
+    image_content = resp.read()
 
-class ServerAuth:
-    ip: str
-    port: int
+    return b64encode(image_content).decode("utf-8")
 
-    
 class Media(TypedDict):
     #TODO: return base64 encoded
     capsule: str | None 
@@ -77,52 +82,146 @@ class Game(TypedDict):
     media: Media
     size: float# in MB?
     executablePath: str # relative
-    id: int
+    id: str
     
 class SteamShortCut(Game):
     directory: str # working directory
     launchOptions: str
 
+class ServerAuth(TypedDict):
+    ip: str
+    port: int
+    
+class GameStoreClientConfig(TypedDict):
+    server_ip: NotRequired[str]
+    server_port: NotRequired[int]
+
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse
+import re
+import threading
+from urllib.response import addinfourl
+
+
+class ForwardHTTPHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        # url = "http://192.168.0.29:9543/game/75647578090013437797342484020852550194/capsule"
+
+        regex = r"\/game\/(?P<id>[^\/]*)\/(?P<asset_type>[^\/]*)"
+
+        url = urlparse(self.path)
+        print(url.path)
+        match_obj = re.search(regex, url.path)
+        assert match_obj is not None
+        print(match_obj.group("id"))
+        print(match_obj.group("asset_type"))
+
+        resp: addinfourl = request.urlopen(f"http://{self.server.game_server[0]}:{self.server.game_server[1]}/game/{match_obj.group("id")}/{match_obj.group("asset_type")}") #type: ignore
+        print("Server:", resp.status)
+
+
+        assert resp.status is not None
+        self.send_response(resp.status)
+
+        for key, value in resp.headers.items():
+            self.send_header(key, value)
+        self.end_headers()
+
+        self.wfile.write(resp.read())
+
+class HTTPForwarder(HTTPServer):
+    def __init__(self, server_address, RequestHandlerClass, game_root_server: Tuple[str, int], bind_and_activate: bool = True) -> None:
+        super().__init__(server_address, RequestHandlerClass, bind_and_activate)
+        self.game_server = game_root_server
+
+
+
+
 
 class GameStoreClient():
-    def __init__(self, prefix_dir: Path | None = None, install_path: Path | None = None, proton_dir: Path | None = None) -> None:
+    def __init__(self, 
+                 server_ip: str,
+                 server_port: int,
+                 config: GameStoreClientConfig = {},
+                 prefix_dir: Path | None = None,
+                 install_path: Path | None = None,
+                 proton_dir: Path | None = None
+        ) -> None:
+
         self.name: str = "Komorebi"
-        self.config_dir : Path = Path(decky.DECKY_PLUGIN_SETTINGS_DIR) 
+        self.config_dir: Path = Path(decky.DECKY_PLUGIN_SETTINGS_DIR) 
+        self.config_file: Path = self.config_dir / "config.json"
+        self.config = config
 
-        self.prefix_dir: Path = prefix_dir if prefix_dir else self.config_dir / "prefixes"
-        self.install_path: Path = install_path if install_path else self.config_dir / "games" 
-        self.proton_dir: Path = proton_dir if proton_dir else self.config_dir / "protons"
+        self.server_ip = server_ip
+        self.server_port = server_port
 
-        self.config_dir.mkdir(parents=False, exist_ok=True)
-        self.prefix_dir.mkdir(parents=False, exist_ok=True)
+        self.proxy_ip = "127.0.0.1"
+        self.proxy_port = 9865
+
+        self.data_dir: Path = Path(decky.DECKY_PLUGIN_RUNTIME_DIR) 
+        self.log_file: Path = Path(decky.DECKY_PLUGIN_LOG)
+
+        self.install_path: Path = install_path if install_path else self.data_dir / "games" 
         self.install_path.mkdir(parents=False, exist_ok=True)
-        self.proton_dir.mkdir(parents=False, exist_ok=True)
 
-        self.server_endpoint = "http://127.0.0.1:8000"
+        self.store_assets_dir = self.data_dir / "store"
+        self.store_assets_dir.mkdir(parents=False, exist_ok=True)
 
+        print(dedent(f"""
+            Saving file: {self.config_dir}
+            Plugin dir: {decky.DECKY_PLUGIN_DIR}
+            Plugin log: {decky.DECKY_PLUGIN_LOG}
+            Plugin log dir: {decky.DECKY_PLUGIN_LOG_DIR}
+            Plugin runtime dir: {decky.DECKY_PLUGIN_RUNTIME_DIR}
+        """))
+
+        self.start_server() 
+
+    def get_server_url(self):
+        return f"http://{self.server_ip}:{self.server_port}"
+    def get_proxy_url(self):
+        return f"http://{self.proxy_ip}:{self.proxy_ip}"
+
+
+
+        
+    def start_server(self):
+        self.server = HTTPForwarder((self.proxy_ip, self.proxy_port), ForwardHTTPHandler, (self.server_ip, self.server_port))
+        self.server_thread = threading.Thread(target=self.server.serve_forever)
+        self.server_thread.start()
+
+    def stop_server(self):
+        if self.server is not None:
+            self.server.shutdown()
+            self.server_thread.join()
+
+    def save_config(self):
+        self.config.update(
+            {
+                "server_port": self.server_port,
+                "server_ip": self.server_ip,
+            }
+        )
+
+        print("Saving config: ", self.config)
+        with self.config_file.open("w+") as fp:
+            fp.write(json.dumps(self.config))
 
     # A normal method. It can be called from the TypeScript side using @decky/api.
-    async def authenticate(self, server_auth: ServerAuth) -> bool:
-        return True
+    def set_server_endpoint(self, server_auth: ServerAuth):
+        print(f"setting server endpoint: {server_auth}")
+        self.server_ip = server_auth["ip"].strip("http://")
+        self.server_port = server_auth["port"]
+        self.save_config()
 
-    # cloud saves: backup wine prefix
-    def login(self):
-        pass
 
     def list_games(self) -> list[SteamShortCut]:
-        # test_game: SteamShortCut = SteamShortCut(
-        #                     appName="Signalis",
-        #                     media=Media(),
-        #                     size=1126.4,
-        #                     executablePath=self.install_path / Path("SIGNALIS/SIGNALIS v1.2.1/SIGNALIS.exe"),
-        #                     directory=self.install_path / Path("SIGNALIS/SIGNALIS v1.2.1/"),
-        #                     launchOptions="",
-        #                     id=0
-        #                 )
+        print(self.server_ip)
+        print(self.server_port)
 
-        # url = "http://127.0.0.1:8000"
+        resp = request.urlopen(f"http://{self.server_ip}:{self.server_port}/list-games")
 
-        resp = request.urlopen(f"{self.server_endpoint}/list-games")
         data = resp.read()
         resp_body = json.loads(data)
 
@@ -131,22 +230,22 @@ class GameStoreClient():
             games.append(SteamShortCut(
                     appName=game["name"],
                     media={
-                        "capsule": f"{self.server_endpoint}/game/{game["id"]}/capsule",
-                        "hero": f"{self.server_endpoint}/game/{game["id"]}/hero",
-                        "logo": f"{self.server_endpoint}/game/{game["id"]}/logo",
-                        "icon": f"{self.server_endpoint}/game/{game["id"]}/icon",
+                        "capsule": f"http://{self.proxy_ip}:{self.proxy_port}/game/{game["id"]}/capsule",
+                        "hero": f"http://{self.proxy_ip}:{self.proxy_port}/game/{game["id"]}/hero",
+                        "logo": f"http://{self.proxy_ip}:{self.proxy_port}/game/{game["id"]}/logo",
+                        "icon": f"http://{self.proxy_ip}:{self.proxy_port}/game/{game["id"]}/icon",
                     },
                     id=game["id"],
                     executablePath=str(self.install_path / game["name"] / game["executable_path"]),
-                    size=1126.4,
+                    size=-935,
                     directory=str(self.install_path / game["name"] / game["working_dir"]),
                     launchOptions=""
                 ))
-
-            
         return games
 
+    #!!Important!! appId is generated shortcut appId
     def install(self, steam_shortcut: SteamShortCut, appId: int):
+        print(f"Download: {steam_shortcut}")
         games = self.list_games()
         installing_game = None
         for game in games:
@@ -159,36 +258,54 @@ class GameStoreClient():
             return False
 
         try:
-            self.download(steam_shortcut, appId)
+            self.download(steam_shortcut)
         except Exception as e:
             print(e)
             return False
 
         return True
 
-        # try:
-        #     game = [game for game in games if game.id == gameId][0]
-        # except IndexError:
-        #     raise Exception(f"Cannot find gameId: ${gameId}")
 
-        # if not is_enough_storage(required_space=game.size): 
-        #     return
-
-        # self._download(game)
-        # self.download_dll(appId)
-
-
-    def download_dll(self, appId):
-        pass
-
-    def download(self, game: SteamShortCut, appId: int):
+    def download(self, game: SteamShortCut):
         decky.logger.info(f"Downloading: {game["appName"]}")
-        download_path = download(f"{self.server_endpoint}/download/{game["id"]}", download_path=Path(f"{self.install_path}/{game["appName"]}.zip"))
+        download_path = download(f"http://{self.proxy_ip}:{self.proxy_port}/download/{game["id"]}", download_path=Path(f"{self.install_path}/{game["appName"]}.zip"))
         if download_path is None:
             return
 
         ZipFile(download_path).extractall(path=f"{self.install_path}/{game["appName"]}")
         decky.logger.info(f"Finished: {game["appName"]}")
+
+
+    def download_asset(self, id: str, asset_type: Literal["capsule", "hero", "logo", "icon"]):
+        url = f"http://{self.proxy_ip}:{self.proxy_port}/game/{id}/{asset_type}"
+        decky.logger.info(f"Download asset {url}")
+
+        game_asset_dir = self.store_assets_dir / f'{id}'
+        asset_file = game_asset_dir / f"{asset_type}.jpg"
+
+        if asset_file.exists():
+            return
+
+        game_asset_dir.mkdir(exist_ok=True)
+
+        resp = request.urlopen(url)
+
+        if resp.status == 200:
+            with asset_file.open("wb+") as fp:
+                fp.write(resp.read())
+        else:
+            decky.logger.info(f'Game {id} cannot find capsule image from server')
+
+
+    async def prefetch_game_capsule(self):
+        games = self.list_games()
+        for game in games:
+            self.download_asset(game["id"], asset_type="capsule")
+            self.download_asset(game["id"], asset_type="hero")
+            self.download_asset(game["id"], asset_type="logo")
+            self.download_asset(game["id"], asset_type="icon")
+
+
 
 
 
@@ -202,16 +319,49 @@ class Plugin:
     #     self.loop.create_task(self.long_running())
 
     def __init__(self) -> None:
-        if DEBUG:
-            self.store = GameStoreClient(install_path=Path("/home/mugen/Programing/decky_env/downloads"))
+        # Loads the store images
+
+        # if self.store.server_endpoint is not None:
+        #     self.loop.create_task(self.store.prefetch_game_capsule())
+
+        config_file = Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "config.json"
+        self.store = None
+        try:
+            config: GameStoreClientConfig = json.loads(config_file.read_text())
+            self.store = GameStoreClient(server_ip=config["server_ip"], server_port=config["server_port"], config=config)
+        except Exception as e: 
+            print(e)
+
+    async def is_authenticated(self):
+        return self.store is not None
+
+    async def get_saved_config(self):
+        if self.store:
+            return self.store.config
+
+    async def set_server_endpoint(self, server_auth: ServerAuth):
+        server_auth["ip"] = server_auth["ip"].strip("http://")
+        print("auth: ", server_auth) 
+        print("store: ", self.store)
+        if self.store is not None:
+            self.store.set_server_endpoint(server_auth)
         else:
-            self.store = GameStoreClient()
+            self.store = GameStoreClient(server_ip=server_auth["ip"], server_port=server_auth["port"])
+
+        return True
+
+
 
     async def list_games(self):
-        return self.store.list_games()
+        if self.store:
+            return self.store.list_games()
 
     async def install_game(self, steam_shortcut: SteamShortCut, appId: int):
-        return self.store.install(steam_shortcut, appId)
+        if self.store:
+            return self.store.install(steam_shortcut, appId)
+
+    async def download_asset_base64(self, asset_url: str):
+        return _download_asset_base64(asset_url)
 
 
     # Asyncio-compatible long-running code, executed in a task when the plugin is loaded
@@ -223,6 +373,10 @@ class Plugin:
     # completely removed
     async def _unload(self):
         decky.logger.info("Goodnight World!")
+        if self.store:
+            self.store.stop_server()
+            self.store.save_config()
+
         pass
 
     # Function called after `_unload` during uninstall, utilize this to clean up processes and other remnants of your
@@ -234,24 +388,25 @@ class Plugin:
 
     # Migrations that should be performed before entering `_main()`.
     async def _migration(self):
-        plugin_dir = decky.DECKY_PLUGIN_NAME
+        # plugin_dir = decky.DECKY_PLUGIN_NAME
 
-        decky.logger.info("Migrating")
-        # Here's a migration example for logs:
-        # - `~/.config/decky-template/template.log` will be migrated to `decky.decky_LOG_DIR/template.log`
-        decky.migrate_logs(os.path.join(decky.DECKY_USER_HOME,
-                                               ".config", plugin_dir, "template.log"))
-        # Here's a migration example for settings:
-        # - `~/homebrew/settings/template.json` is migrated to `decky.decky_SETTINGS_DIR/template.json`
-        # - `~/.config/decky-template/` all files and directories under this root are migrated to `decky.decky_SETTINGS_DIR/`
-        decky.migrate_settings(
-            os.path.join(decky.DECKY_HOME, "settings", "template.json"),
-            os.path.join(decky.DECKY_USER_HOME, ".config", plugin_dir))
+        # decky.logger.info("Migrating")
+        # # Here's a migration example for logs:
+        # # - `~/.config/decky-template/template.log` will be migrated to `decky.decky_LOG_DIR/template.log`
+        # decky.migrate_logs(os.path.join(decky.DECKY_USER_HOME,
+        #                                        ".config", plugin_dir, "template.log"))
+        # # Here's a migration example for settings:
+        # # - `~/homebrew/settings/template.json` is migrated to `decky.decky_SETTINGS_DIR/template.json`
+        # # - `~/.config/decky-template/` all files and directories under this root are migrated to `decky.decky_SETTINGS_DIR/`
+        # decky.migrate_settings(
+        #     os.path.join(decky.DECKY_HOME, "settings", "template.json"),
+        #     os.path.join(decky.DECKY_USER_HOME, ".config", plugin_dir))
 
-        # Here's a migration example for runtime data:
-        # - `~/homebrew/template/` all files and directories under this root are migrated to `decky.decky_RUNTIME_DIR/`
-        # - `~/.local/share/decky-template/` all files and directories under this root are migrated to `decky.decky_RUNTIME_DIR/`
-        decky.migrate_runtime(
-            os.path.join(decky.DECKY_HOME, plugin_dir),
-            os.path.join(decky.DECKY_USER_HOME, ".local", "share", plugin_dir))
+        # # Here's a migration example for runtime data:
+        # # - `~/homebrew/template/` all files and directories under this root are migrated to `decky.decky_RUNTIME_DIR/`
+        # # - `~/.local/share/decky-template/` all files and directories under this root are migrated to `decky.decky_RUNTIME_DIR/`
+        # decky.migrate_runtime(
+        #     os.path.join(decky.DECKY_HOME, plugin_dir),
+        #     os.path.join(decky.DECKY_USER_HOME, ".local", "share", plugin_dir))
+        pass
 

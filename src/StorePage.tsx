@@ -1,6 +1,6 @@
 import { ChangeEventHandler, FC, useEffect, useState } from "react"
 import { GameGrid, GameItem, GameItemProperties } from "./Components/GameGrid"
-import { ButtonItem, ControlsList, Field, Focusable, PanelSection, PanelSectionRow, TextField } from "@decky/ui"
+import { ButtonItem, ControlsList, Field, Focusable, Navigation, PanelSection, PanelSectionRow, TextField } from "@decky/ui"
 import { useServerApi } from "./hooks/useServerApi"
 import { AuthButton } from "./Components/ServerAuth"
 
@@ -13,28 +13,31 @@ export const StorePage: FC<StorePageProperties> = (
 }
 ) => {
 
-  const {getGames} = useServerApi()
+  const {isAuthenticated, getGames} = useServerApi()
   const [games, setGames] = useState<undefined | GameItemProperties[]>(undefined)
   const [filterString, setFilterString] = useState("")
 
   useEffect(() => {
     (async () => {
-      if (!games) {
-        const games = await getGames()  
-        setGames(games)
+      if (isAuthenticated) {
+        if (!games) {
+          const games = await getGames()  
+          setGames(games)
+        }
       }
     })()
-  }, [games])
+  }, [games, isAuthenticated])
 
 
-  console.log("store", games)
   return (
     <>
       <PanelSection title="store">
+        <ButtonItem onClick={() => {Navigation.NavigateBack()}}>
+          Back
+        </ButtonItem>
         <PanelSectionRow>
           <Focusable style={{}}>
             <TextField 
-              placeholder="search..." 
               onChange={(e) => {setFilterString(e.target.value)}}
             />
 
@@ -66,7 +69,7 @@ export const StorePage: FC<StorePageProperties> = (
                     directory={g.directory}
                     launchOptions={g.launchOptions}
                     id={g.id}
-                    appId={g.appId}
+                    size={0}
                   />
                 )
               : []
