@@ -7,15 +7,12 @@ import { AuthButton } from "./Components/ServerAuth"
 type StorePageProperties = {
 }
 
-export const StorePage: FC<StorePageProperties> = (
-{
-  
-}
-) => {
+export const StorePage: FC<StorePageProperties> = () => {
 
   const {isAuthenticated, getGames} = useServerApi()
   const [games, setGames] = useState<undefined | GameItemProperties[]>(undefined)
   const [filterString, setFilterString] = useState("")
+
 
   useEffect(() => {
     (async () => {
@@ -32,9 +29,6 @@ export const StorePage: FC<StorePageProperties> = (
   return (
     <>
       <PanelSection title="store">
-        <ButtonItem onClick={() => {Navigation.NavigateBack()}}>
-          Back
-        </ButtonItem>
         <PanelSectionRow>
           <Focusable style={{}}>
             <TextField 

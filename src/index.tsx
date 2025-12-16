@@ -4,17 +4,10 @@ import {
   PanelSectionRow,
   Navigation,
   staticClasses,
-  DialogBody,
 } from "@decky/ui";
 import {
-  addEventListener,
-  removeEventListener,
-  callable,
   definePlugin,
-  toaster,
-  routerHook
-} from "@decky/api"
-import { useState, useEffect } from "react";
+  routerHook } from "@decky/api"
 import { FaShip } from "react-icons/fa";
 import { StorePage } from "./StorePage";
 import { ServerApiProvider } from "./hooks/useServerApi";
@@ -31,7 +24,6 @@ function Content() {
           layout="below"
           onClick={() => {
             Navigation.Navigate("/storePage");
-            Navigation.CloseSideMenus();
           }}
         >
           Gamestore
@@ -61,9 +53,9 @@ export default definePlugin(() => {
 
 
   routerHook.addRoute(`/storePage`, () => (
-         <StorePage/>
-        //<ServerApiProvider>
-        //</ServerApiProvider>
+        <ServerApiProvider>
+           <StorePage/>
+        </ServerApiProvider>
   ), {
     exact: true //only change when layout changes
   })

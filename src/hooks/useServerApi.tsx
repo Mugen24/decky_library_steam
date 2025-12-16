@@ -25,7 +25,7 @@ export enum ELibraryAssetType {
 }
 
 //@ts-ignore
-// export const ServerApiContext = createContext<ServerApiProperties>({})
+export const ServerApiContext = createContext<ServerApiProperties>({})
 
 
 export function ServerApiProvider({children}: {children?: ReactElement}) {
@@ -43,11 +43,16 @@ export function ServerApiProvider({children}: {children?: ReactElement}) {
 
   }
 
+  // const authenticationListener = addEventListener<[
+  //   isAuthenticated: boolean
+  // ]>("authentication", (isAuthenticated) => {
+  // });
+
   useEffect(() => {
-    return call("is_authenticated") 
-    .then(resp => {
-      setIsAuthenticated(resp)
-    })
+     call("is_authenticated") 
+     .then(resp => {
+       setIsAuthenticated(resp)
+     })
   }, [])
 
 
@@ -138,4 +143,4 @@ export function ServerApiProvider({children}: {children?: ReactElement}) {
 }
 
 //@ts-ignore
-// export const useServerApi = () => useContext<ServerApiProperties>(ServerApiContext)
+export const useServerApi = () => useContext<ServerApiProperties>(ServerApiContext)
