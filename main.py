@@ -255,10 +255,10 @@ class GameStoreClient():
             games.append(SteamShortCut(
                     appName=game["name"],
                     media={
-                        "capsule": f"http://{self.proxy_ip}:{self.proxy_port}/game/{game["id"]}/capsule",
-                        "hero": f"http://{self.proxy_ip}:{self.proxy_port}/game/{game["id"]}/hero",
-                        "logo": f"http://{self.proxy_ip}:{self.proxy_port}/game/{game["id"]}/logo",
-                        "icon": f"http://{self.proxy_ip}:{self.proxy_port}/game/{game["id"]}/icon",
+                        "capsule": f"http://{self.proxy_ip}:{self.proxy_port}/game/{game['id']}/capsule",
+                        "hero": f"http://{self.proxy_ip}:{self.proxy_port}/game/{game['id']}/hero",
+                        "logo": f"http://{self.proxy_ip}:{self.proxy_port}/game/{game['id']}/logo",
+                        "icon": f"http://{self.proxy_ip}:{self.proxy_port}/game/{game['id']}/icon",
                     },
                     id=game["id"],
                     executablePath=str(self.install_path / game["name"] / game["executable_path"]),
@@ -293,14 +293,14 @@ class GameStoreClient():
 
     async def download(self, game: SteamShortCut):
         decky.logger.info(f"Downloading: {game["appName"]}")
-        download_path = await download(game, f"http://{self.server_ip}:{self.server_port}/download/{game["id"]}", download_to=Path(f"{self.install_path}/{game["appName"]}.zip"))
+        download_path = await download(game, f"http://{self.server_ip}:{self.server_port}/download/{game['id']}", download_to=Path(f"{self.install_path}/{game['appName']}.zip"))
         if download_path is None:
             return
 
         decky.logger.info(f"Extracting: {game["appName"]}")
-        ZipFile(download_path).extractall(path=f"{self.install_path}/{game["appName"]}")
+        ZipFile(download_path).extractall(path=f"{self.install_path}/{game['appName']}")
 
-        decky.logger.info(f"Finished: {game["appName"]}")
+        decky.logger.info(f"Finished: {game['appName']}")
 
 
     def download_asset(self, id: str, asset_type: Literal["capsule", "hero", "logo", "icon"]):
