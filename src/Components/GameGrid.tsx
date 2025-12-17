@@ -1,19 +1,21 @@
-import { ButtonItem, ConfirmModal, DialogButton, Focusable, FocusRing, focusRingClasses, libraryAssetImageClasses, Menu, MenuGroup, MenuItem, ModalRoot, ModalRootProps, ScrollPanelGroup, showContextMenu, showModal } from "@decky/ui";
-import { VFC, FC, ReactElement, FunctionComponent, CSSProperties, useState, useEffect, useCallback } from "react";
+import { ButtonItem, ConfirmModal, DialogButton, Focusable, FocusRing, focusRingClasses, libraryAssetImageClasses, Menu, MenuGroup, MenuItem, ModalRoot, ModalRootProps, ProgressBarWithInfo, ScrollPanel, ScrollPanelGroup, showContextMenu, showModal, Tabs } from "@decky/ui";
+import { VFC, FC, ReactElement, FunctionComponent, CSSProperties, useState, useEffect, useCallback, ReactNode } from "react";
 import { ServerApiProperties, useServerApi } from "../hooks/useServerApi";
+import { MdDownloading } from "react-icons/md";
 
 
 
 interface GameContextProperties {
   game: GameItemProperties
-  serverActions: ServerApiProperties
+  handleDownload: (game: GameItemProperties) => void
+  handleUninstall: (game: GameItemProperties) => void
 }
 
 
-export const GameContext: FunctionComponent<GameContextProperties> = ({game, serverActions}) => {
+export const GameContext: FunctionComponent<GameContextProperties> = ({game, handleDownload, handleUninstall}) => {
   return (
     <Menu label={game.appName}>
-        <MenuItem onClick={!game.appId? () => serverActions.install(game) : () => serverActions.uninstall(game.appId)}>
+        <MenuItem onClick={!game.appId? () => handleDownload(game) : () => handleUninstall(game)}>
           {!game.appId? "Install" : "Uninstall"}
         </MenuItem>
     </Menu>
@@ -40,34 +42,77 @@ export type GameItemProperties = {
     // appId: number
 } 
 
+export type GameItemType = {
+  game: GameItemProperties,
+  handleDownload: (game: GameItemProperties) => void,
+  handleUninstall: (game: GameItemProperties) => void
+}
 
-export const GameItem: VFC<GameItemProperties> = (game: GameItemProperties
+export function IconState({lookupTable, activeState}:
+    {
+      lookupTable: Record<string, ReactNode>,
+      activeState: string
+    }
+) {
+  return (
+    <div>
+      {
+          lookupTable[activeState]
+      }
+    </div>
+  )
+}
+
+export type GameState = "Installing" | "Default"
+
+export const GameItem: VFC<GameItemType> = (
+  {
+    game,
+    handleDownload,
+    handleUninstall
+  }
 ) => { 
 
   const [isFocus, setIsFocus] = useState(false)
   const serverActions = useServerApi()
 
-  const style: CSSProperties = {
-    padding: 2,
-    // filter: isFocus ? 'saturate(3) brightness(200%) blur(50px)' : ''
+  const [gameStates, setGameState] = useState<GameState>("Default")
+
+  const iconMap: Record<GameState, ReactNode> = {
+    "Installing": <MdDownloading/>,
+    "Default": <></>
+
   }
+
+  const style: CSSProperties = {
+  }
+
+
+
+
+
 
   return (
     <Focusable 
       onGamepadFocus={() => setIsFocus(true)}
       onGamepadBlur={() => setIsFocus(false)}
       key={`item-root-${game.appName}`}
-      onClick={() => showContextMenu(<GameContext game={game} serverActions={serverActions}/>)}
+      onClick={() => showContextMenu(<GameContext game={game} handleDownload={handleDownload} handleUninstall={handleUninstall} />)}
+      onActivate={() => showContextMenu(<GameContext game={game} handleDownload={handleDownload} handleUninstall={handleUninstall} />)}
+      // onSecondaryActionDescription={
+      //   <div><h1>Test</h1></div>
+      // }
+      style={style}
+
     > 
 
       <ButtonItem 
         bottomSeparator="none"
-        style={style}
+        icon={<IconState lookupTable={iconMap} activeState={gameStates}/>}
+        layout="below"
       >
         <img 
           src={game.media.capsule}
-          // width={"600"}
-          // height={"900"}
           className={libraryAssetImageClasses.Image}
         />
       </ButtonItem>
@@ -104,7 +149,7 @@ export const GameGrid: FC<GameGridProperties> = ({children}) => {
       style={style}
       noFocusRing={true}
     >
-      {children}
+       {children}
     </Focusable>
   )
 }

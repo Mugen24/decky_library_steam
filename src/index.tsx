@@ -11,6 +11,7 @@ import {
 import { FaShip } from "react-icons/fa";
 import { StorePage } from "./StorePage";
 import { ServerApiProvider } from "./hooks/useServerApi";
+import { DownloadManagerProvider } from "./hooks/useDownloadManager";
 
 
 
@@ -51,10 +52,11 @@ export default definePlugin(() => {
   });
   */
 
-
   routerHook.addRoute(`/storePage`, () => (
         <ServerApiProvider>
+          <DownloadManagerProvider>
            <StorePage/>
+          </DownloadManagerProvider>
         </ServerApiProvider>
   ), {
     exact: true //only change when layout changes
@@ -75,6 +77,7 @@ export default definePlugin(() => {
       //serverApi.routerHook.removeRoute("/decky-plugin-test");
 
       routerHook.removeRoute("/storePage")
+
 
       //for (const routeName in routes) {
       //  routerHook.removeRoute(routeName)

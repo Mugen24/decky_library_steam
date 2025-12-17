@@ -27,49 +27,6 @@ logger = decky.logger
 
 DEBUG = 1
 
-def check_dependencies():
-    dependencies = ["winetricks", "protontrick"] # use steam to run game
-    try: 
-        subprocess.run("which rsync", capture_output=True, check=True)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Missing dependencies: {e}")
-    pass
-
-def check_system() -> Literal["linux", "window"]:
-    return "linux"
-
-def is_enough_storage(required_space: int) -> bool:
-    return True
-
-
-def download(url, download_path: Path):
-    # url = "http://127.0.0.1:8000/download/308836784772523141175612368748750693433"
-    r = request.Request(url, headers={
-        "Content-Type": "application/zip",
-        "Connection": "keep-alive",
-    })
-
-    resp = request.urlopen(r)
-    if resp.status != 200:
-        print("Server Error")
-        return 
-
-    chunk_size = 10 * 1024
-
-    with open(download_path, "wb") as fp:
-        print(f"Downloading: {download_path}")
-        while chunk := resp.read(chunk_size):
-            fp.write(chunk)
-
-    return download_path
-
-def _download_asset_base64(asset_url: str):
-    runtime_dir = Path(decky.DECKY_PLUGIN_RUNTIME_DIR) 
-    resp = request.urlopen(asset_url)
-    image_content = resp.read()
-
-    return b64encode(image_content).decode("utf-8")
-
 class Media(TypedDict):
     #TODO: return base64 encoded
     capsule: str | None 
@@ -96,6 +53,72 @@ class GameStoreClientConfig(TypedDict):
     server_ip: NotRequired[str]
     server_port: NotRequired[int]
 
+
+def check_dependencies():
+    dependencies = ["winetricks", "protontrick"] # use steam to run game
+    try: 
+        subprocess.run("which rsync", capture_output=True, check=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Missing dependencies: {e}")
+    pass
+
+def check_system() -> Literal["linux", "window"]:
+    return "linux"
+
+def is_enough_storage(required_space: int) -> bool:
+    return True
+
+
+
+
+async def download(game: SteamShortCut, url, download_to: Path):
+    r = request.Request(url, headers={
+        "Content-Type": "application/zip",
+        "Connection": "keep-alive",
+    })
+
+    print(f"Downloading: {download_to}")
+    await decky.emit(f"download_progress", game["id"], {
+            "game": game,
+            "progress": 0,
+            "description": "Creating zip file"
+    })
+
+    resp = request.urlopen(r)
+    if resp.status != 200:
+        print("Server Error")
+        return 
+
+    chunk_size = 10 * 1024
+    file_size = int(resp.headers.get("content-length", None))
+    downloaded = 0
+    assert file_size is not None
+
+
+    with open(download_to, "wb") as fp:
+        while chunk := resp.read(chunk_size):
+            fp.write(chunk)
+            downloaded += chunk_size
+            print(file_size)
+            print(downloaded)
+            dl = round((downloaded / file_size) * 100)
+            print(f"Downloading: {download_to} {dl}%")
+
+            await decky.emit(f"download_progress", game["id"], {
+                    "game": game,
+                    "progress": dl,
+                    "description": f"{dl}%"
+            })
+
+    return download_to
+
+def _download_asset_base64(asset_url: str):
+    runtime_dir = Path(decky.DECKY_PLUGIN_RUNTIME_DIR) 
+    resp = request.urlopen(asset_url)
+    image_content = resp.read()
+
+    return b64encode(image_content).decode("utf-8")
+
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 import re
@@ -107,16 +130,18 @@ class ForwardHTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         # url = "http://192.168.0.29:9543/game/75647578090013437797342484020852550194/capsule"
 
-        regex = r"\/game\/(?P<id>[^\/]*)\/(?P<asset_type>[^\/]*)"
+        # regex = r"\/game\/(?P<id>[^\/]*)\/(?P<asset_type>[^\/]*)"
 
-        url = urlparse(self.path)
-        print(url.path)
-        match_obj = re.search(regex, url.path)
-        assert match_obj is not None
-        print(match_obj.group("id"))
-        print(match_obj.group("asset_type"))
+        # url = urlparse(self.path)
+        # print(url.path)
+        # match_obj = re.search(regex, url.path)
+        # assert match_obj is not None
+        # print(match_obj.group("id"))
+        # print(match_obj.group("asset_type"))
 
-        resp: addinfourl = request.urlopen(f"http://{self.server.game_server[0]}:{self.server.game_server[1]}/game/{match_obj.group("id")}/{match_obj.group("asset_type")}") #type: ignore
+        # resp: addinfourl = request.urlopen(f"http://{self.server.game_server[0]}:{self.server.game_server[1]}/game/{match_obj.group("id")}/{match_obj.group("asset_type")}") #type: ignore
+        resp: addinfourl = request.urlopen(f"http://{self.server.game_server[0]}:{self.server.game_server[1]}{self.path}") #type: ignore
+
         print("Server:", resp.status)
 
 
@@ -244,7 +269,7 @@ class GameStoreClient():
         return games
 
     #!!Important!! appId is generated shortcut appId
-    def install(self, steam_shortcut: SteamShortCut, appId: int):
+    async def install(self, steam_shortcut: SteamShortCut, appId: int):
         print(f"Download: {steam_shortcut}")
         games = self.list_games()
         installing_game = None
@@ -258,7 +283,7 @@ class GameStoreClient():
             return False
 
         try:
-            self.download(steam_shortcut)
+            await self.download(steam_shortcut)
         except Exception as e:
             print(e)
             return False
@@ -266,13 +291,15 @@ class GameStoreClient():
         return True
 
 
-    def download(self, game: SteamShortCut):
+    async def download(self, game: SteamShortCut):
         decky.logger.info(f"Downloading: {game["appName"]}")
-        download_path = download(f"http://{self.proxy_ip}:{self.proxy_port}/download/{game["id"]}", download_path=Path(f"{self.install_path}/{game["appName"]}.zip"))
+        download_path = await download(game, f"http://{self.server_ip}:{self.server_port}/download/{game["id"]}", download_to=Path(f"{self.install_path}/{game["appName"]}.zip"))
         if download_path is None:
             return
 
+        decky.logger.info(f"Extracting: {game["appName"]}")
         ZipFile(download_path).extractall(path=f"{self.install_path}/{game["appName"]}")
+
         decky.logger.info(f"Finished: {game["appName"]}")
 
 
@@ -358,7 +385,10 @@ class Plugin:
 
     async def install_game(self, steam_shortcut: SteamShortCut, appId: int):
         if self.store:
-            return self.store.install(steam_shortcut, appId)
+            await self.store.install(steam_shortcut, appId)
+
+        return 
+            
 
     async def download_asset_base64(self, asset_url: str):
         return _download_asset_base64(asset_url)

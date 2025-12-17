@@ -4,9 +4,9 @@ import { call, callable } from "@decky/api"
 
 export type ServerApiProperties = {
   isAuthenticated: boolean
-  getGames: () => GameItemProperties[]
-  install: (id: GameItemProperties) => void
-  uninstall: (appId: number) => void
+  getGames: () => Promise<GameItemProperties[]>
+  install: (game: GameItemProperties) => Promise<void>
+  uninstall: (game: GameItemProperties) => Promise<void>
   setServerEndpoint: (serverConfig: ServerConfig) => Promise<void>
 } 
 
@@ -57,7 +57,7 @@ export function ServerApiProvider({children}: {children?: ReactElement}) {
 
 
   const getGames = useCallback(async () => {
-    const games = await call("list_games")
+    const games: GameItemProperties[] = await call("list_games")
     return games
   }, [])
 
@@ -120,8 +120,8 @@ export function ServerApiProvider({children}: {children?: ReactElement}) {
       return outcome
   }
 
-  const uninstall = async (appId: number) => {
-      console.debug(`Uninstall: ${appId}`)
+  const uninstall = async (game: GameItemProperties) => {
+      console.debug(`Uninstall to be implemented: ${game}`)
     // ISteamClient.Apps.RemoveShortcut(appId)
   }
 
