@@ -2,7 +2,7 @@
 // @ts-ignore
 
 // Prevents it from being duplicated in output.
-const manifest = {"name":"Example Plugin","author":"John Doe","flags":["debug","_root"],"api_version":1,"publish":{"tags":["template","root"],"description":"Decky example plugin.","image":"https://opengraph.githubassets.com/1/SteamDeckHomebrew/PluginLoader"}};
+const manifest = {"name":"Deck Library Steam","author":"John Doe","flags":["debug","_root"],"api_version":1,"publish":{"tags":["template","root"],"description":"Decky library steam plugin."}};
 const API_VERSION = 2;
 const internalAPIConnection = window.__DECKY_SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED_deckyLoaderAPIInit;
 // Initialize
