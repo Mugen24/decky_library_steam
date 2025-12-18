@@ -78,7 +78,7 @@ async def download(game: SteamShortCut, url, download_to: Path):
     })
 
     print(f"Downloading: {download_to}")
-    await decky.emit(f"download_progress", game["id"], {
+    await decky.emit(f"download_progress", game['id'], {
             "game": game,
             "progress": 0,
             "description": "Creating zip file"
@@ -104,7 +104,7 @@ async def download(game: SteamShortCut, url, download_to: Path):
             dl = round((downloaded / file_size) * 100)
             print(f"Downloading: {download_to} {dl}%")
 
-            await decky.emit(f"download_progress", game["id"], {
+            await decky.emit(f"download_progress", game['id'], {
                     "game": game,
                     "progress": dl,
                     "description": f"{dl}%"
@@ -292,12 +292,12 @@ class GameStoreClient():
 
 
     async def download(self, game: SteamShortCut):
-        decky.logger.info(f"Downloading: {game["appName"]}")
+        decky.logger.info(f"Downloading: {game['appName']}")
         download_path = await download(game, f"http://{self.server_ip}:{self.server_port}/download/{game['id']}", download_to=Path(f"{self.install_path}/{game['appName']}.zip"))
         if download_path is None:
             return
 
-        decky.logger.info(f"Extracting: {game["appName"]}")
+        decky.logger.info(f"Extracting: {game['appName']}")
         ZipFile(download_path).extractall(path=f"{self.install_path}/{game['appName']}")
 
         decky.logger.info(f"Finished: {game['appName']}")
