@@ -1,5 +1,5 @@
 {
-  "name": "decky-plugin-template",
+  "name": "decky-library-steam",
   "version": "0.0.1",
   "description": "A template to quickly create decky plugins from scratch, based on TypeScript and webpack",
   "type": "module",
@@ -9,10 +9,6 @@
     "watchScript": "rollup -c -w --watch.onEnd=\"npm run sync\"",
     "test": "echo \"Error: no test specified\" && exit 1",
     "sync": "cp -r dist/* /home/mugen/test/distrobox_bazzite/homebrew/plugins/decky_library_steam/dist; cp main.py /home/mugen/test/distrobox_bazzite/homebrew/plugins/decky_library_steam/"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/SteamDeckHomebrew/decky-plugin-template.git"
   },
   "keywords": [
     "decky",
