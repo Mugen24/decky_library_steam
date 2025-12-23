@@ -89,7 +89,7 @@ async def download(game: SteamShortCut, url, download_to: Path):
         print("Server Error")
         return 
 
-    chunk_size = 10 * 1024
+    chunk_size = 1024 * 1024
     file_size = int(resp.headers.get("content-length", None))
     downloaded = 0
     assert file_size is not None
