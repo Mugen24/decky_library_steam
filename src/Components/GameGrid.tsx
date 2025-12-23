@@ -124,7 +124,7 @@ export const GameItem: VFC<GameItemType> = (
 export const FilterModal: VFC<ModalRootProps> = () => {
   return (
     <ModalRoot>
-      <DialogButton> 
+      <DialogButton/> 
     </ModalRoot>
   )
 }
