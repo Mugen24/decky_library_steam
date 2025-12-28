@@ -24,6 +24,7 @@ function Content() {
         <ButtonItem
           layout="below"
           onClick={() => {
+
             Navigation.Navigate("/storePage");
           }}
         >

@@ -11,12 +11,12 @@ export type DownloadInfo = {
 export type DownloadModalType = {
   closeModal: () => void
   downloadsRecords: Record<string, DownloadInfo> 
-//   handleCancel: (id: string) => void
+  handleCancel: (id: string) => void
 //   handlePause: (id: string) => void
 //   handlePlay: (id: string) => void
 }
 
-export function GameProgress({downloadInfo}: {downloadInfo: DownloadInfo}) {
+export function GameProgress({downloadInfo, handleCancel}: {downloadInfo: DownloadInfo, handleCancel: (id: string) => void}) {
   return (
     <>
       <Focusable
@@ -42,7 +42,9 @@ export function GameProgress({downloadInfo}: {downloadInfo: DownloadInfo}) {
               flexDirection: "row"
             }}
           >
-            <ButtonItem>
+            <ButtonItem
+                           
+            >
               <RiCloseFill/>
             </ButtonItem>
           </Focusable>

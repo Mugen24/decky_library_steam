@@ -269,7 +269,7 @@ function RiCloseFill (props) {
   return GenIcon({"tag":"svg","attr":{"viewBox":"0 0 24 24","fill":"currentColor"},"child":[{"tag":"path","attr":{"d":"M11.9997 10.5865L16.9495 5.63672L18.3637 7.05093L13.4139 12.0007L18.3637 16.9504L16.9495 18.3646L11.9997 13.4149L7.04996 18.3646L5.63574 16.9504L10.5855 12.0007L5.63574 7.05093L7.04996 5.63672L11.9997 10.5865Z"},"child":[]}]})(props);
 }
 
-function GameProgress({ downloadInfo }) {
+function GameProgress({ downloadInfo, handleCancel }) {
     return (window.SP_REACT.createElement(window.SP_REACT.Fragment, null,
         window.SP_REACT.createElement(DFL.Focusable, { style: {} },
             window.SP_REACT.createElement("p", null, downloadInfo.game.appName),
@@ -298,7 +298,7 @@ function DownloadManagerProvider({ children }) {
     const { install, uninstall } = useServerApi();
     const modalUpdates = SP_REACT.useRef();
     SP_REACT.useEffect(() => {
-        if (!downloads) {
+        if (Object.keys(downloads).length === 0) {
             const downloadList = localStorage.getItem("library_steam_download_list");
             try {
                 if (downloadList) {
@@ -320,18 +320,20 @@ function DownloadManagerProvider({ children }) {
             modal.Update(window.SP_REACT.createElement(DownloadModal, { closeModal: () => modal.Close(), downloadsRecords: downloads }));
         }
         setDownloads((oldDownloads) => {
-            oldDownloads[id] = progressInfo;
-            return oldDownloads;
+            const newDownloads = { ...oldDownloads };
+            newDownloads[id] = progressInfo;
+            return newDownloads;
         });
     }
-    async function removeDownload(game) {
+    async function removeDownload(id) {
         setDownloads(oldDownloads => {
-            delete oldDownloads[game.id];
-            return oldDownloads;
+            const newDownloads = { ...oldDownloads };
+            delete newDownloads[id];
+            return newDownloads;
         });
     }
     async function showDownloadsModal() {
-        const modal = DFL.showModal(window.SP_REACT.createElement(DownloadModal, { closeModal: () => modal.Close(), downloadsRecords: downloads }));
+        const modal = DFL.showModal(window.SP_REACT.createElement(DownloadModal, { closeModal: () => modal.Close(), downloadsRecords: downloads, handleCancel: removeDownload }));
         modalUpdates.current = modal;
     }
     SP_REACT.useEffect(() => {
@@ -347,7 +349,7 @@ function DownloadManagerProvider({ children }) {
             "progress": 0,
             "fileSize": undefined
         });
-        await install(game);
+        install(game);
         // removeDownload(game)
     }
     const value = {

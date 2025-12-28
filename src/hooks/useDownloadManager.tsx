@@ -26,7 +26,7 @@ export function DownloadManagerProvider(
   const modalUpdates = useRef<ShowModalResult>()
 
   useEffect(() => {
-    if (!downloads) {
+    if (Object.keys(downloads).length === 0) {
       const downloadList = localStorage.getItem("library_steam_download_list")
       try {
         if (downloadList) {
@@ -51,20 +51,22 @@ export function DownloadManagerProvider(
     }
 
     setDownloads((oldDownloads) => {
-        oldDownloads[id] = progressInfo
-        return oldDownloads
+        const newDownloads = {...oldDownloads}
+        newDownloads[id] = progressInfo
+        return newDownloads
     })
   }
 
-  async function removeDownload(game: GameItemProperties) {
+  async function removeDownload(id: string) {
     setDownloads(oldDownloads => {
-      delete oldDownloads[game.id]
-      return oldDownloads
+      const newDownloads = {...oldDownloads}
+      delete newDownloads[id]
+      return newDownloads
     })
   }
 
   async function showDownloadsModal() {
-      const modal = showModal(<DownloadModal closeModal={() => modal.Close()} downloadsRecords={downloads}/>)
+      const modal = showModal(<DownloadModal closeModal={() => modal.Close()} downloadsRecords={downloads} handleCancel={removeDownload}/>)
       modalUpdates.current = modal
   }
 
@@ -85,7 +87,7 @@ export function DownloadManagerProvider(
       "progress": 0,
       "fileSize": undefined 
     })
-    await install(game)
+    install(game)
     // removeDownload(game)
   }
 
