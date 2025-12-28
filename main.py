@@ -298,7 +298,18 @@ class GameStoreClient():
             return
 
         decky.logger.info(f"Extracting: {game['appName']}")
+        await decky.emit(f"download_progress", game['id'], {
+                "game": game,
+                "progress": 100,
+                "description": f"unzipping"
+        })
         ZipFile(download_path).extractall(path=f"{self.install_path}/{game['appName']}")
+
+        await decky.emit(f"download_progress", game['id'], {
+                "game": game,
+                "progress": 100,
+                "description": f"completed"
+        })
 
         decky.logger.info(f"Finished: {game['appName']}")
 
