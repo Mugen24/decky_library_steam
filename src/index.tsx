@@ -64,7 +64,7 @@ export default definePlugin(() => {
 
   return {
     // The name shown in various decky menus
-    name: "Test Plugin",
+    name: "Decky Library Steam",
     // The element displayed at the top of your plugin's menu
     titleView: <div className={staticClasses.Title}>what is that</div>,
     // The content of your plugin's menu
