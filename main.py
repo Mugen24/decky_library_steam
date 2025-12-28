@@ -3,6 +3,7 @@ import os
 from typing import Any, Literal, NewType, NotRequired, Tuple
 import json
 from textwrap import dedent
+import shutil
 from urllib import response
 
 # The decky plugin module is located at decky-loader/plugin
@@ -95,21 +96,31 @@ async def download(game: SteamShortCut, url, download_to: Path):
     assert file_size is not None
 
 
-    with open(download_to, "wb") as fp:
-        while chunk := resp.read(chunk_size):
-            fp.write(chunk)
-            downloaded += chunk_size
-            print(file_size)
-            print(downloaded)
-            dl = round((downloaded / file_size) * 100)
-            print(f"Downloading: {download_to} {dl}%")
+    async with asyncio.TaskGroup() as tg:
+        with open(download_to, "wb") as fp:
+            while chunk := resp.read(chunk_size):
+                fp.write(chunk)
+                downloaded += chunk_size
+                dl = round((downloaded / file_size) * 100)
 
-            await decky.emit(f"download_progress", game['id'], {
-                    "game": game,
-                    "progress": dl,
-                    "description": f"{dl}%"
-            })
+                # print(f"Downloading: {download_to} {dl}%")
 
+                # await decky.emit(f"download_progress", game['id'], {
+                #         "game": game,
+                #         "progress": dl,
+                #         "description": f"{dl}%"
+                # })
+ 
+                # make it increment of 5 to reduce await task
+                # TODO: make a loop that emit download progress every x seconds
+                if dl % 5:
+                    tg.create_task(
+                        decky.emit(f"download_progress", game['id'], {
+                                "game": game,
+                                "progress": dl,
+                                "description": f"{dl}%"
+                        })
+                    )
     return download_to
 
 def _download_asset_base64(asset_url: str):
@@ -303,13 +314,17 @@ class GameStoreClient():
                 "progress": 100,
                 "description": f"unzipping"
         })
-        ZipFile(download_path).extractall(path=f"{self.install_path}/{game['appName']}")
+
+        zip_path = f"{self.install_path}/{game['appName']}"
+        ZipFile(download_path).extractall(path=f"{zip_path}")
+        shutil.rmtree(zip_path, ignore_errors=True)
 
         await decky.emit(f"download_progress", game['id'], {
                 "game": game,
                 "progress": 100,
-                "description": f"completed"
+                "description": f"Completed {game["appName"]}"
         })
+
 
         decky.logger.info(f"Finished: {game['appName']}")
 
