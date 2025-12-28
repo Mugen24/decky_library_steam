@@ -6,6 +6,7 @@ export type DownloadInfo = {
   game: GameItemProperties
   progress: number
   description: string
+  fileSize: number | undefined
 }
 export type DownloadModalType = {
   closeModal: () => void

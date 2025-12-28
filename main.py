@@ -1,3 +1,4 @@
+import time
 from logging import exception
 import os
 from typing import Any, Literal, NewType, NotRequired, Tuple
@@ -5,6 +6,7 @@ import json
 from textwrap import dedent
 import shutil
 from urllib import response
+from multiprocessing import Pool
 
 # The decky plugin module is located at decky-loader/plugin
 # For easy intellisense checkout the decky-loader code repo
@@ -82,7 +84,8 @@ async def download(game: SteamShortCut, url, download_to: Path):
     await decky.emit(f"download_progress", game['id'], {
             "game": game,
             "progress": 0,
-            "description": "Creating zip file"
+            "description": "Creating zip file",
+            "fileSize": None,
     })
 
     resp = request.urlopen(r)
@@ -91,17 +94,29 @@ async def download(game: SteamShortCut, url, download_to: Path):
         return 
 
     chunk_size = 1024 * 1024
+    # chunk_size = 31457280 #30mb
+
     file_size = int(resp.headers.get("content-length", None))
     downloaded = 0
     assert file_size is not None
 
+    print(f"File-size: {file_size}")
+
+    await decky.emit(f"download_progress", game['id'], {
+            "game": game,
+            "progress": 0,
+            "description": "Starting download",
+            "fileSize": file_size,
+    })
+
+    tic = time.perf_counter()
 
     with open(download_to, "wb") as fp:
         while chunk := resp.read(chunk_size):
             fp.write(chunk)
             downloaded += chunk_size
             dl = round((downloaded / file_size) * 100)
-            print(f"Downloading: {download_to} {dl}%")
+            # print(f"Downloading: {download_to} {dl}%")
 
             # await decky.emit(f"download_progress", game['id'], {
             #         "game": game,
@@ -111,12 +126,18 @@ async def download(game: SteamShortCut, url, download_to: Path):
 
             # make it increment of 5 to reduce await task
             # TODO: make a loop that emit download progress every x seconds
-            # if dl % 5:
-            #     await decky.emit(f"download_progress", game['id'], {
-            #             "game": game,
-            #             "progress": dl,
-            #             "description": f"{dl}%"
-            #     })
+            if dl % 25 == 0:
+                print(f"Downloading: {download_to} {dl}%")
+                await decky.emit(f"download_progress", game['id'], {
+                        "game": game,
+                        "progress": dl,
+                        "description": f"{dl}%",
+                        "fileSize": file_size,
+                })
+    toc = time.perf_counter()
+
+    print(f"Completed in {toc - tic} seconds")
+
     return download_to
 
 def _download_asset_base64(asset_url: str):
@@ -125,6 +146,15 @@ def _download_asset_base64(asset_url: str):
     image_content = resp.read()
 
     return b64encode(image_content).decode("utf-8")
+
+
+
+
+
+
+
+
+#------------------------------------------------------------------HTTP-FORWARDER------------------------------------------------------------------------------------------
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
@@ -169,6 +199,10 @@ class HTTPForwarder(HTTPServer):
 
 
 
+
+
+
+#------------------------------------------------------------------SERVER_INTERFACE------------------------------------------------------------------------------------------
 
 class GameStoreClient():
     def __init__(self, 
@@ -322,9 +356,9 @@ class GameStoreClient():
                 "progress": 100,
                 "description": f"Completed {game["appName"]}"
         })
-
-
         decky.logger.info(f"Finished: {game['appName']}")
+
+
 
 
     def download_asset(self, id: str, asset_type: Literal["capsule", "hero", "logo", "icon"]):
@@ -360,21 +394,16 @@ class GameStoreClient():
 
 
 
+
+#----------------------------------------------------------------DECKY-INTERFACE------------------------------------------------------
+
+
+
+
+
+
 class Plugin:
-    # async def long_running(self):
-    #     await asyncio.sleep(15)
-    #     # Passing through a bunch of random data, just as an example
-    #     await decky.emit("timer_event", "Hello from the backend!", True, 2)
-
-    # async def start_timer(self):
-    #     self.loop.create_task(self.long_running())
-
     def __init__(self) -> None:
-        # Loads the store images
-
-        # if self.store.server_endpoint is not None:
-        #     self.loop.create_task(self.store.prefetch_game_capsule())
-
         config_file = Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "config.json"
         self.store = None
         try:
@@ -398,6 +427,7 @@ class Plugin:
             self.store.set_server_endpoint(server_auth)
         else:
             self.store = GameStoreClient(server_ip=server_auth["ip"], server_port=server_auth["port"])
+            self.store.save_config()
 
         return True
 

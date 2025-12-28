@@ -25,6 +25,23 @@ export function DownloadManagerProvider(
   const {install, uninstall} = useServerApi()
   const modalUpdates = useRef<ShowModalResult>()
 
+  useEffect(() => {
+    if (!downloads) {
+      const downloadList = localStorage.getItem("library_steam_download_list")
+      try {
+        if (downloadList) {
+          setDownloads(JSON.parse(downloadList))
+        }
+      }
+      catch (error){
+        console.log(error)
+      }
+    }
+    else {
+      localStorage.setItem("library_steam_download_list", JSON.stringify(downloads))
+    }
+  }, [downloads])
+
 
   function updateDownload(id: string, progressInfo: DownloadInfo) {
     console.log("Updating Download", progressInfo)
@@ -65,8 +82,8 @@ export function DownloadManagerProvider(
     updateDownload(`${game.id}`, {
       "game": game,
       "description": "",
-      "progress": 0
-       
+      "progress": 0,
+      "fileSize": undefined 
     })
     await install(game)
     // removeDownload(game)

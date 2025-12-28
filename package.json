@@ -8,7 +8,7 @@
     "watch": "rollup -c -w",
     "watchScript": "rollup -c -w --watch.onEnd=\"npm run sync\"",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "sync": "cp -r dist/* /home/mugen/test/distrobox_bazzite/homebrew/plugins/decky_library_steam/dist; cp main.py /home/mugen/test/distrobox_bazzite/homebrew/plugins/decky_library_steam/"
+    "sync": "cp -r dist/* /home/mugen/test/distrobox_bazzite/decky-loader/backend/plugins/decky_library_steam/dist; cp main.py /home/mugen/test/distrobox_bazzite/decky-loader/backend/plugins/decky_library_steam/"
   },
   "keywords": [
     "decky",

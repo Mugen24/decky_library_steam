@@ -72,7 +72,8 @@ export function ServerApiProvider({children}: {children?: ReactElement}) {
       //TODO: remove later
       //Need testing: Apps.SetXXX needs to be run at least once to show shortcut
       //in UI
-      SteamClient.Apps.SetAppLaunchOptions(appId, `appId=${appId}`)
+      //SteamClient.Apps.SetAppLaunchOptions(appId, `appId=${appId}`)
+      SteamClient.Apps.SetAppLaunchOptions(appId, ``)
       
       // SteamClient.Apps.SpecifyCompatTool
       // const data = await SteamClient.Apps.GetAvailableCompatTools(appId)

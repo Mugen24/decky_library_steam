@@ -137,7 +137,8 @@ function ServerApiProvider({ children }) {
         //TODO: remove later
         //Need testing: Apps.SetXXX needs to be run at least once to show shortcut
         //in UI
-        SteamClient.Apps.SetAppLaunchOptions(appId, `appId=${appId}`);
+        //SteamClient.Apps.SetAppLaunchOptions(appId, `appId=${appId}`)
+        SteamClient.Apps.SetAppLaunchOptions(appId, ``);
         // SteamClient.Apps.SpecifyCompatTool
         // const data = await SteamClient.Apps.GetAvailableCompatTools(appId)
         // console.debug(`available_compatools: appId: ${game.appName}  ${JSON.stringify(data)}`)
@@ -296,6 +297,22 @@ function DownloadManagerProvider({ children }) {
     const [downloads, setDownloads] = SP_REACT.useState({});
     const { install, uninstall } = useServerApi();
     const modalUpdates = SP_REACT.useRef();
+    SP_REACT.useEffect(() => {
+        if (!downloads) {
+            const downloadList = localStorage.getItem("library_steam_download_list");
+            try {
+                if (downloadList) {
+                    setDownloads(JSON.parse(downloadList));
+                }
+            }
+            catch (error) {
+                console.log(error);
+            }
+        }
+        else {
+            localStorage.setItem("library_steam_download_list", JSON.stringify(downloads));
+        }
+    }, [downloads]);
     function updateDownload(id, progressInfo) {
         console.log("Updating Download", progressInfo);
         if (modalUpdates.current) {
@@ -327,7 +344,8 @@ function DownloadManagerProvider({ children }) {
         updateDownload(`${game.id}`, {
             "game": game,
             "description": "",
-            "progress": 0
+            "progress": 0,
+            "fileSize": undefined
         });
         await install(game);
         // removeDownload(game)
