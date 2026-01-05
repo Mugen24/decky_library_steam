@@ -7,6 +7,7 @@ from textwrap import dedent
 import shutil
 from urllib import response
 from multiprocessing import Pool
+from collections import deque
 
 # The decky plugin module is located at decky-loader/plugin
 # For easy intellisense checkout the decky-loader code repo
@@ -42,7 +43,7 @@ class Game(TypedDict):
     media: Media
     size: float# in MB?
     executablePath: str # relative
-    id: str
+    id: str #server_id
     
 class SteamShortCut(Game):
     directory: str # working directory
@@ -93,8 +94,9 @@ async def download(game: SteamShortCut, url, download_to: Path):
         print("Server Error")
         return 
 
-    chunk_size = 1024 * 1024
+    # chunk_size = 1024 * 1024
     # chunk_size = 31457280 #30mb
+    chunk_size = 10 ** 6 * 1000 * 1 #1gb
 
     file_size = int(resp.headers.get("content-length", None))
     downloaded = 0
@@ -109,8 +111,8 @@ async def download(game: SteamShortCut, url, download_to: Path):
             "fileSize": file_size,
     })
 
-    tic = time.perf_counter()
 
+    tic = time.perf_counter()
     with open(download_to, "wb") as fp:
         while chunk := resp.read(chunk_size):
             fp.write(chunk)
@@ -135,7 +137,6 @@ async def download(game: SteamShortCut, url, download_to: Path):
                         "fileSize": file_size,
                 })
     toc = time.perf_counter()
-
     print(f"Completed in {toc - tic} seconds")
 
     return download_to
@@ -165,30 +166,12 @@ from urllib.response import addinfourl
 
 class ForwardHTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # url = "http://192.168.0.29:9543/game/75647578090013437797342484020852550194/capsule"
-
-        # regex = r"\/game\/(?P<id>[^\/]*)\/(?P<asset_type>[^\/]*)"
-
-        # url = urlparse(self.path)
-        # print(url.path)
-        # match_obj = re.search(regex, url.path)
-        # assert match_obj is not None
-        # print(match_obj.group("id"))
-        # print(match_obj.group("asset_type"))
-
-        # resp: addinfourl = request.urlopen(f"http://{self.server.game_server[0]}:{self.server.game_server[1]}/game/{match_obj.group("id")}/{match_obj.group("asset_type")}") #type: ignore
         resp: addinfourl = request.urlopen(f"http://{self.server.game_server[0]}:{self.server.game_server[1]}{self.path}") #type: ignore
-
-        print("Server:", resp.status)
-
-
         assert resp.status is not None
         self.send_response(resp.status)
-
         for key, value in resp.headers.items():
             self.send_header(key, value)
         self.end_headers()
-
         self.wfile.write(resp.read())
 
 class HTTPForwarder(HTTPServer):
@@ -197,7 +180,252 @@ class HTTPForwarder(HTTPServer):
         self.game_server = game_root_server
 
 
+#------------------------------------------------------------------Download-manager------------------------------------------------------------------------------------------
 
+type DownloadState = Literal["download", "downloading", "paused", "downloaded", "removed"]
+
+class DownloadRecord(TypedDict):
+    game_id: str
+    url: str
+    download_to: str
+    start: int
+    state: DownloadState
+
+
+class DownloadManager():
+    def __init__(self, server_root: Path) -> None:
+        self.downloading: deque[DownloadRecord] = deque()
+        self.download_records: dict[str, DownloadRecord] = {}
+
+        self.download_records_lock = threading.Lock()
+        self.downloading_lock = threading.Lock()
+
+
+        self._is_any_download = threading.Event()
+        self._stop = False
+
+        self.consumer_task = threading.Thread(target=self.consumer)
+        self.consumer_task.start()
+
+        self.config_path = server_root / "download_record.json"
+        if self.config_path.exists():
+            self.download_records = json.loads(self.config_path.read_text())
+
+
+            # remove all previously downloaded games
+            removed_game: list[str] = []
+            for game_id, record in self.download_records.items():
+                if record["state"] == "downloaded" or record["state"] == "removed":
+                    removed_game.append(game_id)
+
+                
+
+            with self.download_records_lock:
+                for rm_id in removed_game:
+                    del self.download_records[rm_id]
+
+        else:
+            self.save_config()
+
+
+    def save_config(self):
+        with self.config_path.open("w+") as fp:
+            fp.write(json.dumps(self.download_records))
+
+
+    def update_state(self, game_id: str, state: DownloadState):
+        game_record = self.download_records.get(game_id)
+
+        if game_record is None:
+            print(f"Game entry not found: {game_id}")
+            return
+
+
+        if state == "download":
+            game_record["state"] = state
+            with self.download_records_lock:
+                self.download_records[game_id] = game_record 
+
+            with self.downloading_lock:
+                self.downloading.append(self.download_records[game_id])
+
+            pass
+        elif state == "paused":
+            game_record["state"] = state
+            with self.download_records_lock:
+                self.download_records[game_id] = game_record 
+            pass
+
+        elif state == "downloading":
+            game_record["state"] = state
+            with self.download_records_lock:
+                self.download_records[game_id] = game_record 
+            pass
+        elif state == "removed":
+            game_record["state"] = state
+            with self.download_records_lock:
+                self.download_records[game_id] = game_record 
+            pass
+        elif state == "downloaded":
+            game_record["state"] = state
+            with self.download_records_lock:
+                self.download_records[game_id] = game_record 
+            pass
+        else: 
+            raise Exception(f"State {state} not implemented")
+
+
+    def download(self, game_id: str, url: str, download_to: str):
+        with self.download_records_lock:
+            if game_id in self.download_records:
+                if self.download_records[game_id]["state"] != "downloaded":
+                    self.download_records[game_id]["state"] = "download"
+            else:
+                self.download_records[game_id] = {
+                            "game_id": game_id,
+                            "url": url, 
+                            "download_to": download_to,
+                            "start": 0,
+                            "state": "download"
+                        }
+
+        with self.downloading_lock:
+            self.downloading.append(self.download_records[game_id])
+            self._is_any_download.set()
+
+    def consumer(self):
+        try:
+            while not self._stop:
+                try: 
+                    with self.downloading_lock:
+                        game_record = self.downloading.popleft()
+                        game_id = game_record["game_id"]
+                except IndexError:
+                    self._is_any_download.clear()
+                    print("Empty Queue")
+                    self._is_any_download.wait()
+                    continue
+
+                if game_record["state"] != "download":
+                    print(game_record)
+                    print(self.download_records)
+                    continue
+
+                print("Starting Download:", game_record)
+
+                self.update_state(game_id, "downloading")
+
+                url = game_record["url"]
+                r: request.Request = request.Request(game_record["url"])
+                resp = request.urlopen(r)
+                try: 
+                    file_size = int(resp.headers.get("Content-Length"))
+                except Exception as e:
+                    print(e)
+                    continue
+
+                print(resp.headers)
+
+                chunk_size = 1024 * 1024 * 10
+
+                start = game_record["start"]
+                end = None
+                part = (file_size - start) // chunk_size
+
+                for i in range(0, part):
+                    print("Tack:", i, "-", part)
+                    if end is not None:
+                        start = end + 1
+                    end = file_size - 1 if i == part - 1 else (start + chunk_size - 1)
+
+                    # Check if game still need to be downloaded
+                    if game_record["state"] != "downloading":
+                        break
+
+                    with self.download_records_lock:
+                        game_record["start"] = start
+
+                    if self._stop:
+                        self.update_state(game_id, "paused")
+                        break
+
+                    self._download_part(start, end, url, game_record["download_to"])
+                    
+                    if end == file_size - 1:
+                        self.update_state(game_id, "downloaded")
+                        print("Downloaded:", game_record)
+
+        except Exception as e:
+            print("Download thread encountered error")
+            print(e)
+        finally:
+            print(self.download_records)
+            self._download_thread_cleanup()
+
+    def remove_game(self, game_id: str):
+        game_record = self.download_records.get(game_id)
+        if game_record is None:
+            print(f"Game entry not found: {game_id}")
+            return
+
+        self.update_state(game_id, "removed")
+
+    def priority_download(self, game_id: str):
+        game_record = self.download_records.get(game_id)
+        if game_record is None:
+            print(f"Game entry not found: {game_id}")
+            return
+
+        with self.downloading_lock:
+            self.downloading.appendleft(self.download_records[game_id])
+
+        has_paused_current_game = 0
+        for game_id, record in self.download_records.items():
+            if record["state"] == "downloading":
+                self.update_state(game_id, "paused")
+                has_paused_current_game += 1
+
+        if has_paused_current_game > 1:
+            print(self.download_records)
+            raise Exception("Should not be more than one game being downloaded")
+
+
+
+
+    def _download_part(self, start, end, url, file_dest: str):
+        # url = "http://192.168.0.29:9543/download/75750689628605614378287604382577387587"
+        print(f"starting {start} {end}")
+        r = request.Request(url, headers={
+            "Content-Type": "application/zip",
+            "Range": f"bytes={start}-{end}",
+            "Transfer-Encoding": "chunked",
+        })
+
+        resp = request.urlopen(r)
+        # content_length = end - start + 1
+        # content = resp.read(content_length)
+
+
+        with open(file_dest, "ab+") as fp:
+            while content := resp.read():
+                fp.seek(start)
+                fp.write(content)
+
+        print(f"Downloaded-part: {start} - {end}")
+
+    def _download_thread_cleanup(self):
+        print("Cleaning up")
+        self.save_config()
+
+    def stop(self):
+        # Thread might be as sleep waiting for queue
+        # We need to wake it up then exit
+        print("set True")
+        self._stop = True
+        self._is_any_download.set()
+
+    def get_download_record(self):
+        return self.download_records
 
 
 
@@ -236,6 +464,8 @@ class GameStoreClient():
         self.store_assets_dir = self.data_dir / "store"
         self.store_assets_dir.mkdir(parents=False, exist_ok=True)
 
+        self.download_manager = DownloadManager(server_root=self.data_dir)
+
         print(dedent(f"""
             Saving file: {self.config_dir}
             Plugin dir: {decky.DECKY_PLUGIN_DIR}
@@ -251,9 +481,6 @@ class GameStoreClient():
     def get_proxy_url(self):
         return f"http://{self.proxy_ip}:{self.proxy_ip}"
 
-
-
-        
     def start_server(self):
         self.server = HTTPForwarder((self.proxy_ip, self.proxy_port), ForwardHTTPHandler, (self.server_ip, self.server_port))
         self.server_thread = threading.Thread(target=self.server.serve_forever)
@@ -292,7 +519,6 @@ class GameStoreClient():
 
         data = resp.read()
         resp_body = json.loads(data)
-
         games = []
         for game in resp_body["games"]:
             games.append(SteamShortCut(
@@ -337,6 +563,7 @@ class GameStoreClient():
     async def download(self, game: SteamShortCut):
         decky.logger.info(f"Downloading: {game['appName']}")
         download_path = await download(game, f"http://{self.server_ip}:{self.server_port}/download/{game['id']}", download_to=Path(f"{self.install_path}/{game['appName']}.zip"))
+
         if download_path is None:
             return
 
@@ -393,13 +620,7 @@ class GameStoreClient():
 
 
 
-
-
 #----------------------------------------------------------------DECKY-INTERFACE------------------------------------------------------
-
-
-
-
 
 
 class Plugin:

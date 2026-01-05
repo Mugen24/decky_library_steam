@@ -17,13 +17,14 @@ export const StorePage: FC<StorePageProperties> = () => {
   // const [downloadRecords, setDownloadRecords] = useState<Record<string, DownloadInfo>>({})
   const {addDownload, removeDownload, downloads, showDownloadsModal} = useDownloadManager()
 
-
+  
   useEffect(() => {
     (async () => {
       if (isAuthenticated) {
-        if (!games) {
-          const games = await getGames()  
-          setGames(games)
+        console.log(`Games: ${games}`)
+        if (!games || games.length === 0) {
+          const g = await getGames()  
+          setGames(g)
         }
       }
     })()
