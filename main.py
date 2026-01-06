@@ -182,7 +182,7 @@ class HTTPForwarder(HTTPServer):
 
 #------------------------------------------------------------------Download-manager------------------------------------------------------------------------------------------
 
-type DownloadState = Literal["download", "downloading", "paused", "downloaded", "removed"]
+DownloadState = Literal["download", "downloading", "paused", "downloaded", "removed"]
 
 class DownloadRecord(TypedDict):
     game_id: str
@@ -392,11 +392,11 @@ class DownloadManager():
                     if end == file_size - 1:
                         self.update_state(game_id, "downloaded")
 
-                        ZipFile(game_record["download_to"]).extractall(path=f"{game_record["install_to"]}")
+                        ZipFile(game_record["download_to"]).extractall(path=f"{game_record['install_to']}")
 
                         os.remove(game_record["download_to"])
 
-                        decky.logger.info(f"Finished: {game_record["game_detail"]['appName']}")
+                        decky.logger.info(f"Finished: {game_record['game_detail']['appName']}")
 
         except Exception as e:
             print("Download thread encountered error")
