@@ -38,6 +38,7 @@ function Content() {
 export default definePlugin(() => {
   console.log("Template plugin initializing, this is called once on frontend startup")
 
+
   // Add an event listener to the "timer_event" event from the backend
   /*
   const listener = addEventListener<[

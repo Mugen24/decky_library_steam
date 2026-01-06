@@ -91,7 +91,11 @@ function IconBase(props) {
 }
 
 // THIS FILE IS AUTO GENERATED
-function FaShip (props) {
+function FaPause (props) {
+  return GenIcon({"tag":"svg","attr":{"viewBox":"0 0 448 512"},"child":[{"tag":"path","attr":{"d":"M144 479H48c-26.5 0-48-21.5-48-48V79c0-26.5 21.5-48 48-48h96c26.5 0 48 21.5 48 48v352c0 26.5-21.5 48-48 48zm304-48V79c0-26.5-21.5-48-48-48h-96c-26.5 0-48 21.5-48 48v352c0 26.5 21.5 48 48 48h96c26.5 0 48-21.5 48-48z"},"child":[]}]})(props);
+}function FaPlay (props) {
+  return GenIcon({"tag":"svg","attr":{"viewBox":"0 0 448 512"},"child":[{"tag":"path","attr":{"d":"M424.4 214.7L72.4 6.6C43.8-10.3 0 6.1 0 47.9V464c0 37.5 40.7 60.1 72.4 41.3l352-208c31.4-18.5 31.5-64.1 0-82.6z"},"child":[]}]})(props);
+}function FaShip (props) {
   return GenIcon({"tag":"svg","attr":{"viewBox":"0 0 640 512"},"child":[{"tag":"path","attr":{"d":"M496.616 372.639l70.012-70.012c16.899-16.9 9.942-45.771-12.836-53.092L512 236.102V96c0-17.673-14.327-32-32-32h-64V24c0-13.255-10.745-24-24-24H248c-13.255 0-24 10.745-24 24v40h-64c-17.673 0-32 14.327-32 32v140.102l-41.792 13.433c-22.753 7.313-29.754 36.173-12.836 53.092l70.012 70.012C125.828 416.287 85.587 448 24 448c-13.255 0-24 10.745-24 24v16c0 13.255 10.745 24 24 24 61.023 0 107.499-20.61 143.258-59.396C181.677 487.432 216.021 512 256 512h128c39.979 0 74.323-24.568 88.742-59.396C508.495 491.384 554.968 512 616 512c13.255 0 24-10.745 24-24v-16c0-13.255-10.745-24-24-24-60.817 0-101.542-31.001-119.384-75.361zM192 128h256v87.531l-118.208-37.995a31.995 31.995 0 0 0-19.584 0L192 215.531V128z"},"child":[]}]})(props);
 }
 
@@ -134,6 +138,7 @@ function ServerApiProvider({ children }) {
         console.debug(`Install: ${game}`);
         const appId = await SteamClient.Apps.AddShortcut(game.appName, game.executablePath, game.directory, game.launchOptions);
         console.debug(`game_info: ${game.id}, appId: ${appId}`);
+        const outcome = await call("install_game", game, appId);
         //TODO: remove later
         //Need testing: Apps.SetXXX needs to be run at least once to show shortcut
         //in UI
@@ -173,19 +178,32 @@ function ServerApiProvider({ children }) {
         // getBase64Image(game.media.logo!, async (base64: string) => {
         //   SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", ELibraryAssetType.Logo)
         // })
-        const outcome = await call("install_game", game, appId);
         return outcome;
     };
-    const uninstall = async (game) => {
-        console.debug(`Uninstall to be implemented: ${game}`);
-        // ISteamClient.Apps.RemoveShortcut(appId)
-    };
+    async function remove_game(game) {
+        await call("remove_game", game);
+        return;
+    }
+    async function pause_game(game) {
+        await call("pause_game", game);
+        return;
+    }
+    async function priority_install(game) {
+        await call("priority_install", game);
+        return;
+    }
+    async function emit_download_records() {
+        await call("emit_download_records");
+    }
     const value = {
         getGames,
         install,
-        uninstall,
         setServerEndpoint,
-        isAuthenticated
+        remove_game,
+        pause_game,
+        priority_install,
+        emit_download_records,
+        isAuthenticated,
     };
     return (window.SP_REACT.createElement(ServerApiContext.Provider, { value: value }, children));
 }
@@ -269,7 +287,30 @@ function RiCloseFill (props) {
   return GenIcon({"tag":"svg","attr":{"viewBox":"0 0 24 24","fill":"currentColor"},"child":[{"tag":"path","attr":{"d":"M11.9997 10.5865L16.9495 5.63672L18.3637 7.05093L13.4139 12.0007L18.3637 16.9504L16.9495 18.3646L11.9997 13.4149L7.04996 18.3646L5.63574 16.9504L10.5855 12.0007L5.63574 7.05093L7.04996 5.63672L11.9997 10.5865Z"},"child":[]}]})(props);
 }
 
-function GameProgress({ downloadInfo, handleCancel }) {
+function GameProgress({ downloadInfo, handleCancel, handleStartDownload, handlePause, }) {
+    const [dlState, setDlState] = SP_REACT.useState("downloading");
+    function getDlStateButton() {
+        let handler = undefined;
+        let icon = undefined;
+        if (dlState === "downloading") {
+            icon = (window.SP_REACT.createElement(FaPause, null));
+            handler = () => {
+                setDlState("paused");
+                handlePause(downloadInfo.game);
+            };
+        }
+        else if (dlState === "paused") {
+            icon = window.SP_REACT.createElement(FaPlay, null);
+            handler = () => {
+                setDlState("downloading");
+                handleStartDownload(downloadInfo.game);
+            };
+        }
+        else {
+            throw new Error("Undefined state");
+        }
+        return (window.SP_REACT.createElement(DFL.ButtonItem, { onClick: () => handler() }, icon));
+    }
     return (window.SP_REACT.createElement(window.SP_REACT.Fragment, null,
         window.SP_REACT.createElement(DFL.Focusable, { style: {} },
             window.SP_REACT.createElement("p", null, downloadInfo.game.appName),
@@ -282,62 +323,51 @@ function GameProgress({ downloadInfo, handleCancel }) {
                         flex: 1,
                         flexDirection: "row"
                     } },
-                    window.SP_REACT.createElement(DFL.ButtonItem, null,
+                    getDlStateButton(),
+                    window.SP_REACT.createElement(DFL.ButtonItem, { onClick: () => {
+                            handleCancel(downloadInfo.game);
+                        } },
                         window.SP_REACT.createElement(RiCloseFill, null)))))));
 }
-function DownloadModal({ closeModal, downloadsRecords }) {
+function DownloadModal({ closeModal, downloadRecords, handleCancel, handlePause, handleStartDownload, }) {
     return (window.SP_REACT.createElement(DFL.ModalRoot, { onEscKeypress: () => closeModal(), onCancel: () => closeModal() },
-        window.SP_REACT.createElement(DFL.PanelSection, null, Object.values(downloadsRecords).map(d => {
-            return (window.SP_REACT.createElement(GameProgress, { downloadInfo: d }));
+        window.SP_REACT.createElement(DFL.PanelSection, null, Object.values(downloadRecords).map(d => {
+            return (window.SP_REACT.createElement(GameProgress, { downloadInfo: d, handleStartDownload: handleStartDownload, handlePause: handlePause, handleCancel: handleCancel }));
         }))));
 }
 
 const DownloadManagerContext = SP_REACT.createContext({});
 function DownloadManagerProvider({ children }) {
     const [downloads, setDownloads] = SP_REACT.useState({});
-    const { install, uninstall } = useServerApi();
+    const { install, remove_game, pause_game, priority_install, emit_download_records } = useServerApi();
     const modalUpdates = SP_REACT.useRef();
-    SP_REACT.useEffect(() => {
-        if (Object.keys(downloads).length === 0) {
-            const downloadList = localStorage.getItem("library_steam_download_list");
-            try {
-                if (downloadList) {
-                    setDownloads(JSON.parse(downloadList));
-                }
-            }
-            catch (error) {
-                console.log(error);
-            }
-        }
-        else {
-            localStorage.setItem("library_steam_download_list", JSON.stringify(downloads));
-        }
-    }, [downloads]);
     function updateDownload(id, progressInfo) {
         console.log("Updating Download", progressInfo);
-        if (modalUpdates.current) {
-            const modal = modalUpdates.current;
-            modal.Update(window.SP_REACT.createElement(DownloadModal, { closeModal: () => modal.Close(), downloadsRecords: downloads }));
-        }
-        setDownloads((oldDownloads) => {
-            const newDownloads = { ...oldDownloads };
-            newDownloads[id] = progressInfo;
-            return newDownloads;
-        });
+        const newDownloads = { ...downloads };
+        newDownloads[id] = progressInfo;
+        setDownloads(newDownloads);
     }
-    async function removeDownload(id) {
+    async function removeDownload(game) {
+        await remove_game(game);
         setDownloads(oldDownloads => {
             const newDownloads = { ...oldDownloads };
-            delete newDownloads[id];
+            delete newDownloads[game.id];
             return newDownloads;
         });
     }
     async function showDownloadsModal() {
-        const modal = DFL.showModal(window.SP_REACT.createElement(DownloadModal, { closeModal: () => modal.Close(), downloadsRecords: downloads, handleCancel: removeDownload }));
+        const modal = DFL.showModal(window.SP_REACT.createElement(DownloadModal, { closeModal: () => modal.Close(), downloadRecords: downloads, handleCancel: removeDownload, handlePause: pause_game, handleStartDownload: priority_install }));
         modalUpdates.current = modal;
     }
     SP_REACT.useEffect(() => {
+        if (modalUpdates.current) {
+            const modal = modalUpdates.current;
+            modal.Update(window.SP_REACT.createElement(DownloadModal, { closeModal: () => modal.Close(), downloadRecords: downloads, handleCancel: removeDownload, handlePause: pause_game, handleStartDownload: priority_install }));
+        }
+    }, [downloads]);
+    SP_REACT.useEffect(() => {
         const l = addEventListener("download_progress", updateDownload);
+        emit_download_records();
         return () => {
             removeEventListener("download_progress", l);
         };
@@ -350,7 +380,6 @@ function DownloadManagerProvider({ children }) {
             "fileSize": undefined
         });
         install(game);
-        // removeDownload(game)
     }
     const value = {
         addDownload,

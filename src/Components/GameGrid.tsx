@@ -38,7 +38,7 @@ export type GameItemProperties = {
     executablePath: string,
     directory: string,
     launchOptions: string,
-    id: number,
+    id: string
     // appId: number
 } 
 

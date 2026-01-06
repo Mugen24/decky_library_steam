@@ -1,7 +1,7 @@
 import time
 from logging import exception
 import os
-from typing import Any, Literal, NewType, NotRequired, Tuple
+from typing import Any, Callable, Coroutine, Literal, NewType, NotRequired, Tuple
 import json
 from textwrap import dedent
 import shutil
@@ -190,6 +190,9 @@ class DownloadRecord(TypedDict):
     download_to: str
     start: int
     state: DownloadState
+    # emit_game_state: Callable[[int, str], Any]
+    game_detail: SteamShortCut
+    install_to: str
 
 
 class DownloadManager():
@@ -204,28 +207,41 @@ class DownloadManager():
         self._is_any_download = threading.Event()
         self._stop = False
 
-        self.consumer_task = threading.Thread(target=self.consumer)
-        self.consumer_task.start()
+
+        self.loop = asyncio.get_event_loop()
+        self.loop.create_task(self.progress_event_emitter())
+
 
         self.config_path = server_root / "download_record.json"
         if self.config_path.exists():
-            self.download_records = json.loads(self.config_path.read_text())
-
-
-            # remove all previously downloaded games
-            removed_game: list[str] = []
-            for game_id, record in self.download_records.items():
-                if record["state"] == "downloaded" or record["state"] == "removed":
-                    removed_game.append(game_id)
-
-                
 
             with self.download_records_lock:
+                self.download_records = json.loads(self.config_path.read_text())
+
+                # remove all previously downloaded games
+                removed_game: list[str] = []
+                for game_id, record in self.download_records.items():
+                    if record["state"] == "downloaded" or record["state"] == "removed":
+                        removed_game.append(game_id)
+
+                    elif record["state"] == "paused"  or record["state"] == "download":
+                        if record["state"] == "paused":
+                            record["state"] = "download"
+
+                        with self.downloading_lock:
+                            self.downloading.append(record)
+
+                    
+
                 for rm_id in removed_game:
                     del self.download_records[rm_id]
 
-        else:
-            self.save_config()
+        self.save_config()
+
+        # !!IMPORTANT 
+        # Must start thread at the very end to load all the necessary config
+        self.consumer_task = threading.Thread(target=self.consumer)
+        self.consumer_task.start()
 
 
     def save_config(self):
@@ -240,6 +256,7 @@ class DownloadManager():
             print(f"Game entry not found: {game_id}")
             return
 
+        print("Updating state: " , game_record["game_detail"]["appName"], state)
 
         if state == "download":
             game_record["state"] = state
@@ -249,7 +266,6 @@ class DownloadManager():
             with self.downloading_lock:
                 self.downloading.append(self.download_records[game_id])
 
-            pass
         elif state == "paused":
             game_record["state"] = state
             with self.download_records_lock:
@@ -265,7 +281,12 @@ class DownloadManager():
             game_record["state"] = state
             with self.download_records_lock:
                 self.download_records[game_id] = game_record 
-            pass
+
+            # Remove partially downloaded zip file
+            print("Removing:", game_record["download_to"])
+            if Path(game_record["download_to"]).exists():
+                os.remove(game_record["download_to"])
+
         elif state == "downloaded":
             game_record["state"] = state
             with self.download_records_lock:
@@ -275,25 +296,33 @@ class DownloadManager():
             raise Exception(f"State {state} not implemented")
 
 
-    def download(self, game_id: str, url: str, download_to: str):
-        with self.download_records_lock:
-            if game_id in self.download_records:
-                if self.download_records[game_id]["state"] != "downloaded":
-                    self.download_records[game_id]["state"] = "download"
-            else:
+    def add_to_queue(self, game_id: str, url: str, download_to: str, game_detail: SteamShortCut, install_to: str):
+        print("Adding to queue")
+        print(self.download_records)
+        game_record = self.download_records.get(game_id)
+        if game_record and (game_record["state"] == "paused" or game_record["state"] == "download"):
+            self.update_state(game_id, "download")
+        else:
+            with self.download_records_lock:
                 self.download_records[game_id] = {
                             "game_id": game_id,
                             "url": url, 
                             "download_to": download_to,
                             "start": 0,
-                            "state": "download"
+                            "state": "download",
+                            "game_detail": game_detail,
+                            "install_to": install_to
                         }
 
         with self.downloading_lock:
             self.downloading.append(self.download_records[game_id])
-            self._is_any_download.set()
+        print(self.download_records)
+        self._is_any_download.set()
 
     def consumer(self):
+        print("Starting consumer")
+        print(self.download_records)
+        print(self.downloading)
         try:
             while not self._stop:
                 try: 
@@ -311,10 +340,6 @@ class DownloadManager():
                     print(self.download_records)
                     continue
 
-                print("Starting Download:", game_record)
-
-                self.update_state(game_id, "downloading")
-
                 url = game_record["url"]
                 r: request.Request = request.Request(game_record["url"])
                 resp = request.urlopen(r)
@@ -324,8 +349,18 @@ class DownloadManager():
                     print(e)
                     continue
 
-                print(resp.headers)
+                print("Starting Download:", game_record)
+                self.update_state(game_id, "downloading")
 
+
+                decky.logger.warn("TODO: get server to return file size instead")
+                # this only working because it's set before the state is updated to downloading
+                # and is what the self.progress_event_emitter looks for 
+                with self.download_records_lock:
+                    game_record["game_detail"]["size"] = file_size
+
+
+                print(resp.headers)
                 chunk_size = 1024 * 1024 * 10
 
                 start = game_record["start"]
@@ -350,10 +385,18 @@ class DownloadManager():
                         break
 
                     self._download_part(start, end, url, game_record["download_to"])
+
+                    # game_record["emit_game_state"](round(( i / part) * 100), "Downloading")
+
                     
                     if end == file_size - 1:
                         self.update_state(game_id, "downloaded")
-                        print("Downloaded:", game_record)
+
+                        ZipFile(game_record["download_to"]).extractall(path=f"{game_record["install_to"]}")
+
+                        os.remove(game_record["download_to"])
+
+                        decky.logger.info(f"Finished: {game_record["game_detail"]['appName']}")
 
         except Exception as e:
             print("Download thread encountered error")
@@ -362,19 +405,15 @@ class DownloadManager():
             print(self.download_records)
             self._download_thread_cleanup()
 
-    def remove_game(self, game_id: str):
-        game_record = self.download_records.get(game_id)
-        if game_record is None:
-            print(f"Game entry not found: {game_id}")
-            return
-
-        self.update_state(game_id, "removed")
-
     def priority_download(self, game_id: str):
         game_record = self.download_records.get(game_id)
         if game_record is None:
             print(f"Game entry not found: {game_id}")
             return
+
+        with self.download_records_lock:
+            game_record["state"] = "download"
+            self.download_records[game_id] = game_record
 
         with self.downloading_lock:
             self.downloading.appendleft(self.download_records[game_id])
@@ -389,6 +428,7 @@ class DownloadManager():
             print(self.download_records)
             raise Exception("Should not be more than one game being downloaded")
 
+        self._is_any_download.set()
 
 
 
@@ -415,6 +455,11 @@ class DownloadManager():
 
     def _download_thread_cleanup(self):
         print("Cleaning up")
+        with self.download_records_lock:
+            for record in self.download_records.values():
+                if record["state"] == "downloading":
+                    record["state"] = "paused"
+
         self.save_config()
 
     def stop(self):
@@ -426,6 +471,50 @@ class DownloadManager():
 
     def get_download_record(self):
         return self.download_records
+
+
+    def download_records_cleanup(self):
+        with self.download_records_lock:
+            # remove all previously downloaded games
+            removed_game: list[str] = []
+            for game_id, record in self.download_records.items():
+                if record["state"] == "downloaded" or record["state"] == "removed":
+                    removed_game.append(game_id)
+            for rm_id in removed_game:
+                del self.download_records[rm_id]
+
+    # TODO: 
+    async def progress_event_emitter(self):
+        try:
+            while True:
+                downloaded_or_removed_flag = 0
+                for record in self.download_records.values():
+                    if record["state"] == "downloading":
+                        progress = round((record["start"] / record["game_detail"]["size"]) * 100)
+                        await decky.emit("download_progress", record["game_detail"]["id"], {
+                            "game": record["game_detail"],
+                            "progress": progress,
+                            "description": f"Downloading: {progress}"
+                        })
+                    elif record["state"] == "downloaded":
+                        await decky.emit("download_progress", record["game_detail"]["id"], {
+                            "game": record["game_detail"],
+                            "progress": round((record["start"] / record["game_detail"]["size"]) * 100),
+                            "description": "Downloaded"
+                        })
+
+                        downloaded_or_removed_flag = 1
+                    elif record["state"] == "removed":
+                        downloaded_or_removed_flag = 1
+
+                if downloaded_or_removed_flag:
+                    # This is needed so that we don't emit identical event multiple time
+                    self.download_records_cleanup()
+
+                await asyncio.sleep(20)
+
+        except asyncio.CancelledError:
+            print("Infinite bg loop cancelled")
 
 
 
@@ -482,6 +571,9 @@ class GameStoreClient():
         return f"http://{self.proxy_ip}:{self.proxy_ip}"
 
     def start_server(self):
+        # TODO: Rename this 
+        # Basically spins a server thread for our local http forwarder
+        # to bypass loading http images on an https website
         self.server = HTTPForwarder((self.proxy_ip, self.proxy_port), ForwardHTTPHandler, (self.server_ip, self.server_port))
         self.server_thread = threading.Thread(target=self.server.serve_forever)
         self.server_thread.start()
@@ -490,6 +582,9 @@ class GameStoreClient():
         if self.server is not None:
             self.server.shutdown()
             self.server_thread.join()
+
+        # also stop out download manager thread
+        self.download_manager.stop()
 
     def save_config(self):
         self.config.update(
@@ -556,36 +651,49 @@ class GameStoreClient():
         except Exception as e:
             print(e)
             return False
-
         return True
 
 
     async def download(self, game: SteamShortCut):
         decky.logger.info(f"Downloading: {game['appName']}")
-        download_path = await download(game, f"http://{self.server_ip}:{self.server_port}/download/{game['id']}", download_to=Path(f"{self.install_path}/{game['appName']}.zip"))
 
-        if download_path is None:
-            return
+        url = f"http://{self.server_ip}:{self.server_port}/download/{game['id']}"
+        download_path = Path(f"{self.install_path}/{game['appName']}.zip")
 
-        decky.logger.info(f"Extracting: {game['appName']}")
+        loop = asyncio.get_event_loop()
+        # emitted_task: list[asyncio.Task] = []
+        # def emit_game_state(progress: int, description: str):
+        #     task = asyncio.run_coroutine_threadsafe(decky.emit(f"download_progress", game['id'], {
+        #             "game": game,
+        #             "progress": progress,
+        #             "description": description
+        #     }), loop)
+
+        #     # emitted_task.append(task)
+
         await decky.emit(f"download_progress", game['id'], {
                 "game": game,
-                "progress": 100,
-                "description": f"unzipping"
+                "progress": 0,
+                "description": f"Zipping"
         })
 
-        zip_path = f"{self.install_path}/{game['appName']}"
-        ZipFile(download_path).extractall(path=f"{zip_path}")
-        shutil.rmtree(zip_path, ignore_errors=True)
+        game_path = f"{self.install_path}/{game['appName']}"
+        self.download_manager.add_to_queue(
+            game_id=game["id"],
+            url=url,
+            download_to=download_path.as_posix(),
+            install_to=game_path,
+            game_detail=game,
+        )
 
-        await decky.emit(f"download_progress", game['id'], {
-                "game": game,
-                "progress": 100,
-                "description": f"Completed {game["appName"]}"
-        })
-        decky.logger.info(f"Finished: {game['appName']}")
+        # decky.logger.info(f"Extracting: {game['appName']}")
+        # await decky.emit(f"download_progress", game['id'], {
+        #         "game": game,
+        #         "progress": 100,
+        #         "description": f"unzipping"
+        # })
 
-
+        # Wait for all coroutine to be submitted to frontend
 
 
     def download_asset(self, id: str, asset_type: Literal["capsule", "hero", "logo", "icon"]):
@@ -616,6 +724,20 @@ class GameStoreClient():
             self.download_asset(game["id"], asset_type="hero")
             self.download_asset(game["id"], asset_type="logo")
             self.download_asset(game["id"], asset_type="icon")
+
+    async def emit_download_record(self):
+        dl_records = self.download_manager.get_download_record()
+
+        for record in dl_records.values():
+            game = record["game_detail"]
+
+            await decky.emit(f"download_progress", game['id'], {
+                    "game": game,
+                    "progress": game["size"] / record["start"],
+                    "description": f"{record['state']}"
+            })
+
+
 
 
 
@@ -652,27 +774,48 @@ class Plugin:
 
         return True
 
-
-
     async def list_games(self):
         if self.store:
             return self.store.list_games()
 
-    async def install_game(self, steam_shortcut: SteamShortCut, appId: int):
-        if self.store:
-            await self.store.install(steam_shortcut, appId)
-
-        return 
             
 
     async def download_asset_base64(self, asset_url: str):
         return _download_asset_base64(asset_url)
 
 
+
+    # Download control
+    async def install_game(self, steam_shortcut: SteamShortCut, appId: int):
+        if self.store:
+            await self.store.install(steam_shortcut, appId)
+
+    async def remove_game(self, game: SteamShortCut):
+        if self.store:
+            self.store.download_manager.update_state(game["id"], "removed")
+
+    async def pause_game(self, game: SteamShortCut):
+        if self.store:
+            self.store.download_manager.update_state(game["id"], "paused")
+    
+    async def priority_install(self, game: SteamShortCut):
+        if self.store:
+            self.store.download_manager.priority_download(game["id"])
+
+    async def emit_download_records(self):
+        # TODO: Remove this from UI
+        return 
+        if self.store:
+            await self.store.emit_download_record()
+    
+
+
+
+
     # Asyncio-compatible long-running code, executed in a task when the plugin is loaded
     async def _main(self):
         self.loop = asyncio.get_event_loop()
-        decky.logger.info("World!")
+        decky.logger.info("Starting!")
 
     # Function called first during the unload process, utilize this to handle your plugin being stopped, but not
     # completely removed
@@ -688,7 +831,6 @@ class Plugin:
     # plugin that may remain on the system
     async def _uninstall(self):
         decky.logger.info("Goodbye World!")
-        pass
 
 
     # Migrations that should be performed before entering `_main()`.

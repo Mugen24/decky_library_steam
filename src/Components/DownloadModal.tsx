@@ -1,6 +1,8 @@
 import { ButtonItem, Focusable, ModalRoot, PanelSection, ProgressBarWithInfo } from "@decky/ui"
 import { GameItemProperties } from "./GameGrid"
 import { RiCloseFill } from "react-icons/ri";
+import { useState } from "react";
+import { FaPlay, FaPause } from "react-icons/fa";
 
 export type DownloadInfo = {
   game: GameItemProperties
@@ -10,13 +12,58 @@ export type DownloadInfo = {
 }
 export type DownloadModalType = {
   closeModal: () => void
-  downloadsRecords: Record<string, DownloadInfo> 
-  handleCancel: (id: string) => void
-//   handlePause: (id: string) => void
-//   handlePlay: (id: string) => void
+  downloadRecords: Record<string, DownloadInfo>
+  handleCancel: (game: GameItemProperties) => Promise<void>
+  handlePause: (game: GameItemProperties) => Promise<void>
+  handleStartDownload: (game: GameItemProperties) => Promise<void>
 }
 
-export function GameProgress({downloadInfo, handleCancel}: {downloadInfo: DownloadInfo, handleCancel: (id: string) => void}) {
+export type DownloadState = "downloading" | "paused" 
+
+
+
+export interface GameProgressType extends Omit<DownloadModalType, "downloadRecords" | "closeModal"> {
+  downloadInfo: DownloadInfo
+}
+
+export function GameProgress({
+  downloadInfo,
+  handleCancel,
+  handleStartDownload,
+  handlePause,
+}: GameProgressType) {
+  const [dlState, setDlState] = useState<DownloadState>("downloading")
+
+  function getDlStateButton() {
+    let handler = undefined
+    let icon = undefined
+    if (dlState === "downloading") {
+      icon = (
+          <FaPause/>
+      )
+      handler = () => {
+        setDlState("paused")
+        handlePause(downloadInfo.game)
+      }
+    }
+    else if  (dlState === "paused") {
+      icon = <FaPlay/>
+      handler = () => {
+        setDlState("downloading")
+        handleStartDownload(downloadInfo.game)
+      }
+    }
+    else {
+      throw new Error("Undefined state")
+    }
+
+    return (
+      <ButtonItem onClick={() => handler()}>
+        {icon}
+      </ButtonItem>
+    )
+  }
+
   return (
     <>
       <Focusable
@@ -42,8 +89,12 @@ export function GameProgress({downloadInfo, handleCancel}: {downloadInfo: Downlo
               flexDirection: "row"
             }}
           >
+            {getDlStateButton()}
+
             <ButtonItem
-                           
+              onClick={() => {
+                handleCancel(downloadInfo.game)
+              }}
             >
               <RiCloseFill/>
             </ButtonItem>
@@ -55,16 +106,28 @@ export function GameProgress({downloadInfo, handleCancel}: {downloadInfo: Downlo
   )
 }
 
-export function DownloadModal({closeModal, downloadsRecords}: DownloadModalType) {
+export function DownloadModal(
+  {
+    closeModal,
+    downloadRecords,
+    handleCancel,
+    handlePause,
+    handleStartDownload,
+  }: DownloadModalType) {
   return (
     <ModalRoot
       onEscKeypress={() => closeModal()}
       onCancel={() => closeModal()}
     >
       <PanelSection>
-        {Object.values(downloadsRecords).map(d => {
+        {Object.values(downloadRecords).map(d => {
           return (
-            <GameProgress downloadInfo={d}/>
+            <GameProgress 
+              downloadInfo={d}
+              handleStartDownload={handleStartDownload}
+              handlePause={handlePause}
+              handleCancel={handleCancel}
+            />
           )
         })}
       </PanelSection>

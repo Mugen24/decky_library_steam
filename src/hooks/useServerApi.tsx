@@ -6,9 +6,14 @@ export type ServerApiProperties = {
   isAuthenticated: boolean
   getGames: () => Promise<GameItemProperties[]>
   install: (game: GameItemProperties) => Promise<void>
-  uninstall: (game: GameItemProperties) => Promise<void>
   setServerEndpoint: (serverConfig: ServerConfig) => Promise<void>
-} 
+
+  // install_game: (game: GameItemProperties, appId: number) => Promise<void>
+  remove_game: (game: GameItemProperties) => Promise<void>
+  pause_game: (game: GameItemProperties) => Promise<void>
+  priority_install: (game: GameItemProperties) => Promise<void>
+  emit_download_records: () => Promise<void>
+}
 
 export type ServerConfig = {
   ip: string,
@@ -68,6 +73,7 @@ export function ServerApiProvider({children}: {children?: ReactElement}) {
       const appId = await SteamClient.Apps.AddShortcut(game.appName, game.executablePath, game.directory, game.launchOptions)
 
       console.debug(`game_info: ${game.id}, appId: ${appId}`)
+      const outcome = await call("install_game", game, appId)
 
       //TODO: remove later
       //Need testing: Apps.SetXXX needs to be run at least once to show shortcut
@@ -117,21 +123,37 @@ export function ServerApiProvider({children}: {children?: ReactElement}) {
       //   SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", ELibraryAssetType.Logo)
       // })
 
-      const outcome = await call("install_game", game, appId)
       return outcome
   }
 
-  const uninstall = async (game: GameItemProperties) => {
-      console.debug(`Uninstall to be implemented: ${game}`)
-    // ISteamClient.Apps.RemoveShortcut(appId)
+  async function remove_game(game: GameItemProperties) {
+    await call("remove_game", game)
+    return 
+  }
+
+  async function pause_game(game: GameItemProperties) {
+    await call("pause_game", game)
+    return 
+  }
+  
+  async function priority_install(game: GameItemProperties) {
+    await call("priority_install", game)
+    return 
+  }
+
+  async function emit_download_records() {
+    await call("emit_download_records")
   }
 
   const value: ServerApiProperties = {
     getGames,
     install,
-    uninstall, 
     setServerEndpoint,
-    isAuthenticated
+    remove_game,
+    pause_game,
+    priority_install,
+    emit_download_records,
+    isAuthenticated,
   }
 
   return (

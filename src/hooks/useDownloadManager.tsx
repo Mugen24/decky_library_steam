@@ -22,58 +22,63 @@ export function DownloadManagerProvider(
 
 ) {
   const [downloads, setDownloads] = useState<Record<string, DownloadInfo>>({})
-  const {install, uninstall} = useServerApi()
+  const {
+    install, 
+    remove_game,
+    pause_game,
+    priority_install,
+    emit_download_records
+  } = useServerApi()
   const modalUpdates = useRef<ShowModalResult>()
-
-  useEffect(() => {
-    if (Object.keys(downloads).length === 0) {
-      const downloadList = localStorage.getItem("library_steam_download_list")
-      try {
-        if (downloadList) {
-          setDownloads(JSON.parse(downloadList))
-        }
-      }
-      catch (error){
-        console.log(error)
-      }
-    }
-    else {
-      localStorage.setItem("library_steam_download_list", JSON.stringify(downloads))
-    }
-  }, [downloads])
-
 
   function updateDownload(id: string, progressInfo: DownloadInfo) {
     console.log("Updating Download", progressInfo)
-    if (modalUpdates.current) {
-      const modal = modalUpdates.current
-      modal.Update(<DownloadModal closeModal={() => modal.Close()} downloadsRecords={downloads}/>) 
-    }
-
-    setDownloads((oldDownloads) => {
-        const newDownloads = {...oldDownloads}
-        newDownloads[id] = progressInfo
-        return newDownloads
-    })
+    const newDownloads = {...downloads}
+    newDownloads[id] = progressInfo
+    setDownloads(newDownloads)
   }
 
-  async function removeDownload(id: string) {
+  async function removeDownload(game: GameItemProperties) {
+    await remove_game(game)
     setDownloads(oldDownloads => {
       const newDownloads = {...oldDownloads}
-      delete newDownloads[id]
+      delete newDownloads[game.id]
       return newDownloads
     })
   }
 
   async function showDownloadsModal() {
-      const modal = showModal(<DownloadModal closeModal={() => modal.Close()} downloadsRecords={downloads} handleCancel={removeDownload}/>)
+      const modal = showModal(
+        <DownloadModal 
+            closeModal={() => modal.Close()} 
+            downloadRecords={downloads} 
+            handleCancel={removeDownload}
+            handlePause={pause_game}
+            handleStartDownload={priority_install}
+          />
+      )
       modalUpdates.current = modal
   }
 
  
+  useEffect(() => {
+    if (modalUpdates.current) {
+      const modal = modalUpdates.current
+      modal.Update(<DownloadModal 
+                   closeModal={() => modal.Close()} 
+                   downloadRecords={downloads}
+                   handleCancel={removeDownload}
+                   handlePause={pause_game}
+                   handleStartDownload={priority_install}
+                   />
+      ) 
+    }
+
+  }, [downloads])
 
   useEffect(() => {
     const l = addEventListener("download_progress", updateDownload)
+    emit_download_records()
     return () => {
       removeEventListener("download_progress", l)
     }
@@ -88,7 +93,6 @@ export function DownloadManagerProvider(
       "fileSize": undefined 
     })
     install(game)
-    // removeDownload(game)
   }
 
 
