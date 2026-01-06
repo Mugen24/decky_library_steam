@@ -115,10 +115,8 @@ function ServerApiProvider({ children }) {
     const setServerEndpoint = async (serverConfig) => {
         console.debug("Connecting to server");
         await call("set_server_endpoint", serverConfig);
-        call("is_authenticated")
-            .then(resp => {
-            setIsAuthenticated(resp);
-        });
+        const resp = await call("is_authenticated");
+        setIsAuthenticated(resp);
     };
     // const authenticationListener = addEventListener<[
     //   isAuthenticated: boolean
@@ -392,7 +390,7 @@ function DownloadManagerProvider({ children }) {
 const useDownloadManager = () => SP_REACT.useContext(DownloadManagerContext);
 
 const StorePage = () => {
-    const { isAuthenticated, getGames, install, uninstall } = useServerApi();
+    const { isAuthenticated, getGames, install } = useServerApi();
     const [games, setGames] = SP_REACT.useState(undefined);
     const [filterString, setFilterString] = SP_REACT.useState("");
     // const [downloadRecords, setDownloadRecords] = useState<Record<string, DownloadInfo>>({})

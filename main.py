@@ -557,6 +557,7 @@ class GameStoreClient():
 
         print(dedent(f"""
             Saving file: {self.config_dir}
+            Plugin setting: {decky.DECKY_PLUGIN_SETTINGS_DIR}
             Plugin dir: {decky.DECKY_PLUGIN_DIR}
             Plugin log: {decky.DECKY_PLUGIN_LOG}
             Plugin log dir: {decky.DECKY_PLUGIN_LOG_DIR}
@@ -603,7 +604,8 @@ class GameStoreClient():
         print(f"setting server endpoint: {server_auth}")
         self.server_ip = server_auth["ip"].strip("http://")
         self.server_port = server_auth["port"]
-        self.save_config()
+        # self.save_config()
+        # return
 
 
     def list_games(self) -> list[SteamShortCut]:
@@ -770,13 +772,15 @@ class Plugin:
             self.store.set_server_endpoint(server_auth)
         else:
             self.store = GameStoreClient(server_ip=server_auth["ip"], server_port=server_auth["port"])
-            self.store.save_config()
+            # self.store.save_config()
 
         return True
 
     async def list_games(self):
         if self.store:
             return self.store.list_games()
+
+        return 
 
             
 
@@ -823,8 +827,6 @@ class Plugin:
         if self.store:
             self.store.stop_server()
             self.store.save_config()
-
-        pass
 
     # Function called after `_unload` during uninstall, utilize this to clean up processes and other remnants of your
     # plugin that may remain on the system

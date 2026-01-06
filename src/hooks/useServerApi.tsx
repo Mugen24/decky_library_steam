@@ -38,14 +38,9 @@ export function ServerApiProvider({children}: {children?: ReactElement}) {
 
   const setServerEndpoint = async (serverConfig: ServerConfig) => {
     console.debug("Connecting to server") 
-    const result = await call("set_server_endpoint", serverConfig)
-
-    call("is_authenticated") 
-    .then(resp => {
-      setIsAuthenticated(resp)
-    })
-
-
+    await call("set_server_endpoint", serverConfig)
+    const resp = await call("is_authenticated") 
+    setIsAuthenticated(resp)
   }
 
   // const authenticationListener = addEventListener<[

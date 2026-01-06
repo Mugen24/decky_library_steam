@@ -11,7 +11,7 @@ type StorePageProperties = {
 
 export const StorePage: FC<StorePageProperties> = () => {
 
-  const {isAuthenticated, getGames, install, uninstall} = useServerApi()
+  const {isAuthenticated, getGames, install} = useServerApi()
   const [games, setGames] = useState<undefined | GameItemProperties[]>(undefined)
   const [filterString, setFilterString] = useState("")
   // const [downloadRecords, setDownloadRecords] = useState<Record<string, DownloadInfo>>({})
