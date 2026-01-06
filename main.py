@@ -804,7 +804,6 @@ class Plugin:
 
     async def emit_download_records(self):
         # TODO: Remove this from UI
-        return 
         if self.store:
             await self.store.emit_download_record()
     
@@ -844,7 +843,7 @@ class Plugin:
         #                                        ".config", plugin_dir, "template.log"))
         # # Here's a migration example for settings:
         # # - `~/homebrew/settings/template.json` is migrated to `decky.decky_SETTINGS_DIR/template.json`
-        # # - `~/.config/decky-template/` all files and directories under this root are migrated to `decky.decky_SETTINGS_DIR/`
+        # # - `~/.config/decky-tempCCEWlate/` all files and directories under this root are migrated to `decky.decky_SETTINGS_DIR/`
         # decky.migrate_settings(
         #     os.path.join(decky.DECKY_HOME, "settings", "template.json"),
         #     os.path.join(decky.DECKY_USER_HOME, ".config", plugin_dir))
